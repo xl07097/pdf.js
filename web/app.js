@@ -18,10 +18,8 @@ import {
   animationStarted,
   apiPageLayoutToViewerModes,
   apiPageModeToSidebarView,
-  AutomationEventBus,
   AutoPrintRegExp,
   DEFAULT_SCALE_VALUE,
-  EventBus,
   getActiveOrFocusedElement,
   isValidRotation,
   isValidScrollMode,
@@ -31,12 +29,14 @@ import {
   parseQueryString,
   ProgressBar,
   RendererType,
+  RenderingStates,
   ScrollMode,
   SidebarView,
   SpreadMode,
   TextLayerMode,
 } from "./ui_utils.js";
 import { AppOptions, compatibilityParams, OptionKind } from "./app_options.js";
+import { AutomationEventBus, EventBus } from "./event_utils.js";
 import {
   build,
   createPromiseCapability,
@@ -57,7 +57,6 @@ import {
   version,
 } from "pdfjs-lib";
 import { CursorTool, PDFCursorTools } from "./pdf_cursor_tools.js";
-import { PDFRenderingQueue, RenderingStates } from "./pdf_rendering_queue.js";
 import { OverlayManager } from "./overlay_manager.js";
 import { PasswordPrompt } from "./password_prompt.js";
 import { PDFAttachmentViewer } from "./pdf_attachment_viewer.js";
@@ -69,6 +68,7 @@ import { PDFLayerViewer } from "./pdf_layer_viewer.js";
 import { PDFLinkService } from "./pdf_link_service.js";
 import { PDFOutlineViewer } from "./pdf_outline_viewer.js";
 import { PDFPresentationMode } from "./pdf_presentation_mode.js";
+import { PDFRenderingQueue } from "./pdf_rendering_queue.js";
 import { PDFScriptingManager } from "./pdf_scripting_manager.js";
 import { PDFSidebar } from "./pdf_sidebar.js";
 import { PDFSidebarResizer } from "./pdf_sidebar_resizer.js";
@@ -810,7 +810,6 @@ const PDFViewerApplication = {
       const { container } = this.appConfig.errorWrapper;
       container.hidden = true;
     }
-    this.appConfig.viewerContainer.removeAttribute("lang");
 
     if (!this.pdfLoadingTask) {
       return;
@@ -1542,10 +1541,6 @@ const PDFViewerApplication = {
         `${(info.Producer || "-").trim()} / ${(info.Creator || "-").trim()}] ` +
         `(PDF.js: ${version || "-"})`
     );
-
-    if (info.Language) {
-      this.appConfig.viewerContainer.lang = info.Language;
-    }
     let pdfTitle = info?.Title;
 
     const metadataTitle = metadata?.get("dc:title");

@@ -622,9 +622,7 @@ describe("api", function () {
         expect(false).toEqual(true);
       } catch (reason) {
         expect(reason instanceof UnknownErrorException).toEqual(true);
-        expect(reason.message).toEqual(
-          "Page dictionary kids object is not an array."
-        );
+        expect(reason.message).toEqual("Illegal character: 41");
       }
       try {
         await pdfDocument2.getPage(1);
@@ -633,9 +631,7 @@ describe("api", function () {
         expect(false).toEqual(true);
       } catch (reason) {
         expect(reason instanceof UnknownErrorException).toEqual(true);
-        expect(reason.message).toEqual(
-          "Page dictionary kids object is not an array."
-        );
+        expect(reason.message).toEqual("End of file inside array.");
       }
 
       await Promise.all([loadingTask1.destroy(), loadingTask2.destroy()]);
@@ -1256,6 +1252,105 @@ describe("api", function () {
         PageOpen: [`this.getField("Text5").value = "PageOpen 3";`],
         PageClose: [`this.getField("Text6").value = "PageClose 3";`],
       });
+
+      await loadingTask.destroy();
+    });
+
+    it("gets non-existent fieldObjects", async function () {
+      const fieldObjects = await pdfDocument.getFieldObjects();
+      expect(fieldObjects).toEqual(null);
+    });
+
+    it("gets fieldObjects", async function () {
+      if (isNodeJS) {
+        pending(
+          "Node.js appears to ignore Object properties that are explicitly " +
+            "set to `undefined`, thus breaking the expectations used below."
+        );
+      }
+      const loadingTask = getDocument(buildGetDocumentParams("js-authors.pdf"));
+      const pdfDoc = await loadingTask.promise;
+      const fieldObjects = await pdfDoc.getFieldObjects();
+
+      expect(fieldObjects).toEqual({
+        Text1: [
+          {
+            id: "25R",
+            value: "",
+            defaultValue: null,
+            multiline: false,
+            password: false,
+            charLimit: null,
+            comb: false,
+            editable: true,
+            hidden: false,
+            name: "Text1",
+            rect: [24.1789, 719.66, 432.22, 741.66],
+            actions: null,
+            page: 0,
+            strokeColor: null,
+            fillColor: null,
+            type: "text",
+          },
+        ],
+        Button1: [
+          {
+            id: "26R",
+            value: "Off",
+            defaultValue: null,
+            exportValues: undefined,
+            editable: true,
+            name: "Button1",
+            rect: [455.436, 719.678, 527.436, 739.678],
+            hidden: false,
+            actions: {
+              Action: [
+                `this.getField("Text1").value = this.info.authors.join("::");`,
+              ],
+            },
+            page: 0,
+            strokeColor: null,
+            fillColor: new Uint8ClampedArray([192, 192, 192]),
+            type: "button",
+          },
+        ],
+      });
+
+      await loadingTask.destroy();
+    });
+
+    it("gets non-existent calculationOrder", async function () {
+      const calculationOrder = await pdfDocument.getCalculationOrderIds();
+      expect(calculationOrder).toEqual(null);
+    });
+
+    it("gets calculationOrder", async function () {
+      if (isNodeJS) {
+        pending("Linked test-cases are not supported in Node.js.");
+      }
+      const loadingTask = getDocument(buildGetDocumentParams("issue13132.pdf"));
+      const pdfDoc = await loadingTask.promise;
+      const calculationOrder = await pdfDoc.getCalculationOrderIds();
+
+      expect(calculationOrder).toEqual([
+        "319R",
+        "320R",
+        "321R",
+        "322R",
+        "323R",
+        "324R",
+        "325R",
+        "326R",
+        "327R",
+        "328R",
+        "329R",
+        "330R",
+        "331R",
+        "332R",
+        "333R",
+        "334R",
+        "335R",
+      ]);
 
       await loadingTask.destroy();
     });
