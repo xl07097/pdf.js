@@ -24,7 +24,7 @@ import {
   utf8StringToString,
   warn,
 } from "../shared/util.js";
-import { isDict, isName, Name } from "./primitives.js";
+import { Dict, isName, Name } from "./primitives.js";
 import { DecryptStream } from "./decrypt_stream.js";
 
 class ARCFourCipher {
@@ -1014,7 +1014,7 @@ class AESBaseCipher {
     let outputLength = 16 * result.length;
     if (finalize) {
       // undo a padding that is described in RFC 2898
-      const lastBlock = result[result.length - 1];
+      const lastBlock = result.at(-1);
       let psLen = lastBlock[15];
       if (psLen <= 16) {
         for (let i = 15, ii = 16 - psLen; i >= ii; --i) {
@@ -1284,7 +1284,7 @@ const PDF20 = (function PDF20Closure() {
     let k = calculateSHA256(input, 0, input.length).subarray(0, 32);
     let e = [0];
     let i = 0;
-    while (i < 64 || e[e.length - 1] > i - 32) {
+    while (i < 64 || e.at(-1) > i - 32) {
       const combinedLength = password.length + k.length + userBytes.length,
         combinedArray = new Uint8Array(combinedLength);
       let writeOffset = 0;
@@ -1647,7 +1647,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
   }
 
   function buildCipherConstructor(cf, name, num, gen, key) {
-    if (!isName(name)) {
+    if (!(name instanceof Name)) {
       throw new FormatError("Invalid crypt filter name.");
     }
     const cryptFilter = cf.get(name.name);
@@ -1713,7 +1713,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
           // Trying to find default handler -- it usually has Length.
           const cfDict = dict.get("CF");
           const streamCryptoName = dict.get("StmF");
-          if (isDict(cfDict) && isName(streamCryptoName)) {
+          if (cfDict instanceof Dict && streamCryptoName instanceof Name) {
             cfDict.suppressEncryption = true; // See comment below.
             const handlerDict = cfDict.get(streamCryptoName.name);
             keyLength = (handlerDict && handlerDict.get("Length")) || 128;
@@ -1838,7 +1838,7 @@ const CipherTransformFactory = (function CipherTransformFactoryClosure() {
 
       if (algorithm >= 4) {
         const cf = dict.get("CF");
-        if (isDict(cf)) {
+        if (cf instanceof Dict) {
           // The 'CF' dictionary itself should not be encrypted, and by setting
           // `suppressEncryption` we can prevent an infinite loop inside of
           // `XRef_fetchUncompressed` if the dictionary contains indirect

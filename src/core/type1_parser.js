@@ -228,7 +228,7 @@ const Type1CharString = (function Type1CharStringClosure() {
               // seac is like type 2's special endchar but it doesn't use the
               // first argument asb, so remove it.
               if (seacAnalysisEnabled) {
-                const asb = this.stack[this.stack.length - 5];
+                const asb = this.stack.at(-5);
                 this.seac = this.stack.splice(-4, 4);
                 this.seac[0] += this.lsb - asb;
                 error = this.executeCommand(0, COMMAND_MAP.endchar);
@@ -512,6 +512,11 @@ const Type1Parser = (function Type1ParserClosure() {
       return (this.currentChar = this.stream.getByte());
     }
 
+    prevChar() {
+      this.stream.skip(-2);
+      return (this.currentChar = this.stream.getByte());
+    }
+
     getToken() {
       // Eat whitespace and comments.
       let comment = false;
@@ -604,6 +609,10 @@ const Type1Parser = (function Type1ParserClosure() {
               token = this.getToken(); // read in 'ND' or '|-'
               if (token === "noaccess") {
                 this.getToken(); // read in 'def'
+              } else if (token === "/") {
+                // The expected 'ND' or '|-' token is missing, avoid swallowing
+                // the start of the next glyph (fixes issue14462_reduced.pdf).
+                this.prevChar();
               }
               charstrings.push({
                 glyph,

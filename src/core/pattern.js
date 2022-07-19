@@ -23,8 +23,8 @@ import {
   Util,
   warn,
 } from "../shared/util.js";
+import { BaseStream } from "./base_stream.js";
 import { ColorSpace } from "./colorspace.js";
-import { isStream } from "./primitives.js";
 import { MissingDataException } from "./core_utils.js";
 
 const ShadingType = {
@@ -50,7 +50,7 @@ class Pattern {
     pdfFunctionFactory,
     localColorSpaceCache
   ) {
-    const dict = isStream(shading) ? shading.dict : shading;
+    const dict = shading instanceof BaseStream ? shading.dict : shading;
     const type = dict.get("ShadingType");
 
     try {
@@ -206,7 +206,7 @@ class RadialAxialShading extends BaseShading {
     }
     if (!extendEnd) {
       // Same idea as above in extendStart but for the end.
-      colorStops[colorStops.length - 1][0] -= BaseShading.SMALL_NUMBER;
+      colorStops.at(-1)[0] -= BaseShading.SMALL_NUMBER;
       colorStops.push([1, background]);
     }
 
@@ -403,7 +403,7 @@ class MeshShading extends BaseShading {
     localColorSpaceCache
   ) {
     super();
-    if (!isStream(stream)) {
+    if (!(stream instanceof BaseStream)) {
       throw new FormatError("Mesh data is not a stream");
     }
     const dict = stream.dict;
@@ -501,11 +501,11 @@ class MeshShading extends BaseShading {
             verticesLeft = 3;
             break;
           case 1:
-            ps.push(ps[ps.length - 2], ps[ps.length - 1]);
+            ps.push(ps.at(-2), ps.at(-1));
             verticesLeft = 1;
             break;
           case 2:
-            ps.push(ps[ps.length - 3], ps[ps.length - 1]);
+            ps.push(ps.at(-3), ps.at(-1));
             verticesLeft = 1;
             break;
         }

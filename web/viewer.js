@@ -27,14 +27,12 @@ window.PDFViewerApplication = PDFViewerApplication;
 window.PDFViewerApplicationOptions = AppOptions;
 
 if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("CHROME")) {
-  var defaultUrl; // eslint-disable-line no-var
-
   (function rewriteUrlClosure() {
     // Run this code outside DOMContentLoaded to make sure that the URL
     // is rewritten as soon as possible.
     const queryString = document.location.search.slice(1);
     const m = /(^|&)file=([^&]*)/.exec(queryString);
-    defaultUrl = m ? decodeURIComponent(m[2]) : "";
+    const defaultUrl = m ? decodeURIComponent(m[2]) : "";
 
     // Example: chrome-extension://.../http://example.com/file.pdf
     const humanReadableUrl = "/" + defaultUrl + location.hash;
@@ -43,6 +41,8 @@ if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("CHROME")) {
       // eslint-disable-next-line no-undef
       chrome.runtime.sendMessage("showPageAction");
     }
+
+    AppOptions.set("defaultUrl", defaultUrl);
   })();
 }
 
@@ -77,7 +77,6 @@ function getViewerConfiguration() {
     appContainer: document.body,
     mainContainer: document.getElementById("viewerContainer"),
     viewerContainer: document.getElementById("viewer"),
-    eventBus: null,
     toolbar: {
       container: document.getElementById("toolbarViewer"),
       numPages: document.getElementById("numPages"),
@@ -89,8 +88,18 @@ function getViewerConfiguration() {
       zoomIn: document.getElementById("zoomIn"),
       zoomOut: document.getElementById("zoomOut"),
       viewFind: document.getElementById("viewFind"),
-      openFile: document.getElementById("openFile"),
+      openFile:
+        typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")
+          ? document.getElementById("openFile")
+          : null,
       print: document.getElementById("print"),
+      editorNoneButton: document.getElementById("editorNone"),
+      editorFreeTextButton: document.getElementById("editorFreeText"),
+      editorFreeTextParamsToolbar: document.getElementById(
+        "editorFreeTextParamsToolbar"
+      ),
+      editorInkButton: document.getElementById("editorInk"),
+      editorInkParamsToolbar: document.getElementById("editorInkParamsToolbar"),
       presentationModeButton: document.getElementById("presentationMode"),
       download: document.getElementById("download"),
       viewBookmark: document.getElementById("viewBookmark"),
@@ -98,13 +107,13 @@ function getViewerConfiguration() {
     secondaryToolbar: {
       toolbar: document.getElementById("secondaryToolbar"),
       toggleButton: document.getElementById("secondaryToolbarToggle"),
-      toolbarButtonContainer: document.getElementById(
-        "secondaryToolbarButtonContainer"
-      ),
       presentationModeButton: document.getElementById(
         "secondaryPresentationMode"
       ),
-      openFileButton: document.getElementById("secondaryOpenFile"),
+      openFileButton:
+        typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")
+          ? document.getElementById("secondaryOpenFile")
+          : null,
       printButton: document.getElementById("secondaryPrint"),
       downloadButton: document.getElementById("secondaryDownload"),
       viewBookmarkButton: document.getElementById("secondaryViewBookmark"),
@@ -126,7 +135,7 @@ function getViewerConfiguration() {
     sidebar: {
       // Divs (and sidebar button)
       outerContainer: document.getElementById("outerContainer"),
-      viewerContainer: document.getElementById("viewerContainer"),
+      sidebarContainer: document.getElementById("sidebarContainer"),
       toggleButton: document.getElementById("sidebarToggle"),
       // Buttons
       thumbnailButton: document.getElementById("viewThumbnail"),
@@ -154,6 +163,7 @@ function getViewerConfiguration() {
       findField: document.getElementById("findInput"),
       highlightAllCheckbox: document.getElementById("findHighlightAll"),
       caseSensitiveCheckbox: document.getElementById("findMatchCase"),
+      matchDiacriticsCheckbox: document.getElementById("findMatchDiacritics"),
       entireWordCheckbox: document.getElementById("findEntireWord"),
       findMsg: document.getElementById("findMsg"),
       findResultsCount: document.getElementById("findResultsCount"),
@@ -161,16 +171,14 @@ function getViewerConfiguration() {
       findNextButton: document.getElementById("findNext"),
     },
     passwordOverlay: {
-      overlayName: "passwordOverlay",
-      container: document.getElementById("passwordOverlay"),
+      dialog: document.getElementById("passwordDialog"),
       label: document.getElementById("passwordText"),
       input: document.getElementById("password"),
       submitButton: document.getElementById("passwordSubmit"),
       cancelButton: document.getElementById("passwordCancel"),
     },
     documentProperties: {
-      overlayName: "documentPropertiesOverlay",
-      container: document.getElementById("documentPropertiesOverlay"),
+      dialog: document.getElementById("documentPropertiesDialog"),
       closeButton: document.getElementById("documentPropertiesClose"),
       fields: {
         fileName: document.getElementById("fileNameField"),
@@ -189,9 +197,18 @@ function getViewerConfiguration() {
         linearized: document.getElementById("linearizedField"),
       },
     },
+    annotationEditorParams: {
+      editorFreeTextFontSize: document.getElementById("editorFreeTextFontSize"),
+      editorFreeTextColor: document.getElementById("editorFreeTextColor"),
+      editorInkColor: document.getElementById("editorInkColor"),
+      editorInkThickness: document.getElementById("editorInkThickness"),
+    },
     errorWrapper,
     printContainer: document.getElementById("printContainer"),
-    openFileInputName: "fileInput",
+    openFileInput:
+      typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")
+        ? document.getElementById("fileInput")
+        : null,
     debuggerScriptPath: "./debugger.js",
   };
 }
@@ -199,6 +216,14 @@ function getViewerConfiguration() {
 function webViewerLoad() {
   const config = getViewerConfiguration();
   if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("PRODUCTION")) {
+    if (window.chrome) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "../build/dev-css/viewer.css";
+
+      document.head.append(link);
+    }
+
     Promise.all([
       import("pdfjs-web/genericcom.js"),
       import("pdfjs-web/pdf_print_service.js"),
@@ -206,10 +231,6 @@ function webViewerLoad() {
       PDFViewerApplication.run(config);
     });
   } else {
-    if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("CHROME")) {
-      AppOptions.set("defaultUrl", defaultUrl);
-    }
-
     if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("GENERIC")) {
       // Give custom implementations of the default viewer a simpler way to
       // set various `AppOptions`, by dispatching an event once all viewer
@@ -237,9 +258,7 @@ function webViewerLoad() {
 
 // Block the "load" event until all pages are loaded, to ensure that printing
 // works in Firefox; see https://bugzilla.mozilla.org/show_bug.cgi?id=1618553
-if (document.blockUnblockOnload) {
-  document.blockUnblockOnload(true);
-}
+document.blockUnblockOnload?.(true);
 
 if (
   document.readyState === "interactive" ||

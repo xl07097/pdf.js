@@ -19,6 +19,7 @@
 const {
   AnnotationLayer,
   AnnotationMode,
+  createPromiseCapability,
   getDocument,
   GlobalWorkerOptions,
   PixelsPerInch,
@@ -26,33 +27,35 @@ const {
   shadow,
   XfaLayer,
 } = pdfjsLib;
-const { SimpleLinkService } = pdfjsViewer;
+const { parseQueryString, SimpleLinkService } = pdfjsViewer;
 
 const WAITING_TIME = 100; // ms
 const CMAP_URL = "/build/generic/web/cmaps/";
 const CMAP_PACKED = true;
 const STANDARD_FONT_DATA_URL = "/build/generic/web/standard_fonts/";
 const IMAGE_RESOURCES_PATH = "/web/images/";
+const VIEWER_CSS = "../build/components/pdf_viewer.css";
 const WORKER_SRC = "../build/generic/build/pdf.worker.js";
 const RENDER_TASK_ON_CONTINUE_DELAY = 5; // ms
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+const md5FileMap = new Map();
 
 function loadStyles(styles) {
   const promises = [];
 
   for (const file of styles) {
     promises.push(
-      new Promise(function (resolve, reject) {
-        const xhr = new XMLHttpRequest();
-        xhr.open("GET", file);
-        xhr.onload = function () {
-          resolve(xhr.responseText);
-        };
-        xhr.onerror = function (e) {
-          reject(new Error(`Error fetching style (${file}): ${e}`));
-        };
-        xhr.send(null);
-      })
+      fetch(file)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(response.statusText);
+          }
+          return response.text();
+        })
+        .catch(reason => {
+          throw new Error(`Error fetching style (${file}): ${reason}`);
+        })
     );
   }
 
@@ -77,32 +80,55 @@ function writeSVG(svgElement, ctx) {
   });
 }
 
-function inlineImages(images) {
-  const imagePromises = [];
-  for (let i = 0, ii = images.length; i < ii; i++) {
-    imagePromises.push(
-      new Promise(function (resolve, reject) {
-        const xhr = new XMLHttpRequest();
-        xhr.responseType = "blob";
-        xhr.onload = function () {
-          const reader = new FileReader();
-          reader.onloadend = function () {
-            resolve(reader.result);
-          };
-          reader.readAsDataURL(xhr.response);
-        };
-        xhr.onerror = function (e) {
-          reject(new Error("Error fetching inline image " + e));
-        };
-        xhr.open("GET", images[i].src);
-        xhr.send();
-      })
+async function inlineImages(node, silentErrors = false) {
+  const promises = [];
+
+  for (const image of node.getElementsByTagName("img")) {
+    const url = image.src;
+
+    promises.push(
+      fetch(url)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(response.statusText);
+          }
+          return response.blob();
+        })
+        .then(blob => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve(reader.result);
+            };
+            reader.onerror = reject;
+
+            reader.readAsDataURL(blob);
+          });
+        })
+        .then(dataUrl => {
+          return new Promise((resolve, reject) => {
+            image.onload = resolve;
+            image.onerror = evt => {
+              if (silentErrors) {
+                resolve();
+                return;
+              }
+              reject(evt);
+            };
+
+            image.src = dataUrl;
+          });
+        })
+        .catch(reason => {
+          throw new Error(`Error inlining image (${url}): ${reason}`);
+        })
     );
   }
-  return Promise.all(imagePromises);
+
+  await Promise.all(promises);
 }
 
-async function convertCanvasesToImages(annotationCanvasMap) {
+async function convertCanvasesToImages(annotationCanvasMap, outputScale) {
   const results = new Map();
   const promises = [];
   for (const [key, canvas] of annotationCanvasMap) {
@@ -110,7 +136,10 @@ async function convertCanvasesToImages(annotationCanvasMap) {
       new Promise(resolve => {
         canvas.toBlob(blob => {
           const image = document.createElement("img");
-          image.onload = resolve;
+          image.onload = function () {
+            image.style.width = Math.floor(image.width / outputScale) + "px";
+            resolve();
+          };
           results.set(key, image);
           image.src = URL.createObjectURL(blob);
         });
@@ -119,29 +148,6 @@ async function convertCanvasesToImages(annotationCanvasMap) {
   }
   await Promise.all(promises);
   return results;
-}
-
-async function resolveImages(node, silentErrors = false) {
-  const images = node.getElementsByTagName("img");
-  const data = await inlineImages(images);
-
-  const loadedPromises = [];
-  for (let i = 0, ii = data.length; i < ii; i++) {
-    loadedPromises.push(
-      new Promise(function (resolveImage, rejectImage) {
-        images[i].onload = resolveImage;
-        images[i].onerror = function (e) {
-          if (silentErrors) {
-            resolveImage();
-          } else {
-            rejectImage(new Error("Error loading image " + e));
-          }
-        };
-        images[i].src = data[i];
-      })
-    );
-  }
-  await Promise.all(loadedPromises);
 }
 
 class Rasterize {
@@ -155,10 +161,7 @@ class Rasterize {
    * styles are inserted via XHR. Therefore, we load and combine them here.
    */
   static get annotationStylePromise() {
-    const styles = [
-      "../web/annotation_layer_builder.css",
-      "./annotation_layer_builder_overrides.css",
-    ];
+    const styles = [VIEWER_CSS, "./annotation_layer_builder_overrides.css"];
     return shadow(this, "annotationStylePromise", loadStyles(styles));
   }
 
@@ -168,10 +171,7 @@ class Rasterize {
   }
 
   static get xfaStylePromise() {
-    const styles = [
-      "../web/xfa_layer_builder.css",
-      "./xfa_layer_builder_overrides.css",
-    ];
+    const styles = [VIEWER_CSS, "./xfa_layer_builder_overrides.css"];
     return shadow(this, "xfaStylePromise", loadStyles(styles));
   }
 
@@ -187,10 +187,10 @@ class Rasterize {
     foreignObject.setAttribute("height", `${viewport.height}px`);
 
     const style = document.createElement("style");
-    foreignObject.appendChild(style);
+    foreignObject.append(style);
 
     const div = document.createElement("div");
-    foreignObject.appendChild(div);
+    foreignObject.append(div);
 
     return { svg, foreignObject, style, div };
   }
@@ -198,6 +198,7 @@ class Rasterize {
   static async annotationLayer(
     ctx,
     viewport,
+    outputScale,
     annotations,
     annotationCanvasMap,
     page,
@@ -209,11 +210,14 @@ class Rasterize {
       div.className = "annotationLayer";
 
       const [common, overrides] = await this.annotationStylePromise;
-      style.textContent = `${common}\n${overrides}`;
+      style.textContent =
+        `${common}\n${overrides}\n` +
+        `:root { --scale-factor: ${viewport.scale} }`;
 
       const annotationViewport = viewport.clone({ dontFlip: true });
       const annotationImageMap = await convertCanvasesToImages(
-        annotationCanvasMap
+        annotationCanvasMap,
+        outputScale
       );
 
       // Rendering annotation layer as HTML.
@@ -230,9 +234,9 @@ class Rasterize {
       AnnotationLayer.render(parameters);
 
       // Inline SVG images from text annotations.
-      await resolveImages(div);
-      foreignObject.appendChild(div);
-      svg.appendChild(foreignObject);
+      await inlineImages(div);
+      foreignObject.append(div);
+      svg.append(foreignObject);
 
       await writeSVG(svg, ctx);
     } catch (reason) {
@@ -248,8 +252,8 @@ class Rasterize {
       // Items are transformed to have 1px font size.
       svg.setAttribute("font-size", 1);
 
-      const [cssRules] = await this.textStylePromise;
-      style.textContent = cssRules;
+      const [overrides] = await this.textStylePromise;
+      style.textContent = overrides;
 
       // Rendering text layer as HTML.
       const task = renderTextLayer({
@@ -261,7 +265,7 @@ class Rasterize {
       await task.promise;
 
       task.expandTextDivs(true);
-      svg.appendChild(foreignObject);
+      svg.append(foreignObject);
 
       await writeSVG(svg, ctx);
     } catch (reason) {
@@ -281,7 +285,7 @@ class Rasterize {
       const { svg, foreignObject, style, div } = this.createContainer(viewport);
 
       const [common, overrides] = await this.xfaStylePromise;
-      style.textContent = `${fontRules}\n${common}\n${overrides}`;
+      style.textContent = `${common}\n${overrides}\n${fontRules}`;
 
       // Rendering XFA layer as HTML.
       XfaLayer.render({
@@ -294,8 +298,8 @@ class Rasterize {
       });
 
       // Some unsupported type of images (e.g. tiff) lead to errors.
-      await resolveImages(div, /* silentErrors = */ true);
-      svg.appendChild(foreignObject);
+      await inlineImages(div, /* silentErrors = */ true);
+      svg.append(foreignObject);
 
       await writeSVG(svg, ctx);
     } catch (reason) {
@@ -330,23 +334,16 @@ class Driver {
     this.end = options.end;
 
     // Set parameters from the query string
-    const parameters = this._getQueryStringParameters();
-    this.browser = parameters.browser;
-    this.manifestFile = parameters.manifestFile;
-    this.delay = parameters.delay | 0 || 0;
+    const params = parseQueryString(window.location.search.substring(1));
+    this.browser = params.get("browser");
+    this.manifestFile = params.get("manifestfile");
+    this.delay = params.get("delay") | 0;
     this.inFlightRequests = 0;
-    this.testFilter = parameters.testFilter
-      ? JSON.parse(parameters.testFilter)
-      : [];
-    this.xfaOnly = parameters.xfaOnly === "true";
+    this.testFilter = JSON.parse(params.get("testfilter") || "[]");
+    this.xfaOnly = params.get("xfaonly") === "true";
 
     // Create a working canvas
     this.canvas = document.createElement("canvas");
-  }
-
-  _getQueryStringParameters() {
-    const queryString = window.location.search.substring(1);
-    return Object.fromEntries(new URLSearchParams(queryString).entries());
   }
 
   run() {
@@ -368,34 +365,32 @@ class Driver {
     this._log(`Harness thinks this browser is ${this.browser}\n`);
     this._log('Fetching manifest "' + this.manifestFile + '"... ');
 
-    const r = new XMLHttpRequest();
-    r.open("GET", this.manifestFile, false);
-    r.onreadystatechange = () => {
-      if (r.readyState === 4) {
-        this._log("done\n");
-        this.manifest = JSON.parse(r.responseText);
-        if (this.testFilter?.length || this.xfaOnly) {
-          this.manifest = this.manifest.filter(item => {
-            if (this.testFilter.includes(item.id)) {
-              return true;
-            }
-            if (this.xfaOnly && item.enableXfa) {
-              return true;
-            }
-            return false;
-          });
-        }
-        this.currentTask = 0;
-        this._nextTask();
-      }
-    };
     if (this.delay > 0) {
       this._log("\nDelaying for " + this.delay + " ms...\n");
     }
     // When gathering the stats the numbers seem to be more reliable
     // if the browser is given more time to start.
-    setTimeout(function () {
-      r.send(null);
+    setTimeout(async () => {
+      const response = await fetch(this.manifestFile);
+      if (!response.ok) {
+        throw new Error(response.statusText);
+      }
+      this._log("done\n");
+      this.manifest = await response.json();
+
+      if (this.testFilter?.length || this.xfaOnly) {
+        this.manifest = this.manifest.filter(item => {
+          if (this.testFilter.includes(item.id)) {
+            return true;
+          }
+          if (this.xfaOnly && item.enableXfa) {
+            return true;
+          }
+          return false;
+        });
+      }
+      this.currentTask = 0;
+      this._nextTask();
     }, this.delay);
   }
 
@@ -431,6 +426,19 @@ class Driver {
       task.stats = { times: [] };
       task.enableXfa = task.enableXfa === true;
 
+      const prevFile = md5FileMap.get(task.md5);
+      if (prevFile) {
+        if (task.file !== prevFile) {
+          this._nextPage(
+            task,
+            `The "${task.file}" file is identical to the previously used "${prevFile}" file.`
+          );
+          return;
+        }
+      } else {
+        md5FileMap.set(task.md5, task.file);
+      }
+
       // Support *linked* test-cases for the other suites, e.g. unit- and
       // integration-tests, without needing to run them as reference-tests.
       if (task.type === "other") {
@@ -457,7 +465,7 @@ class Driver {
           xfaStyleElement = document.createElement("style");
           document.documentElement
             .getElementsByTagName("head")[0]
-            .appendChild(xfaStyleElement);
+            .append(xfaStyleElement);
         }
 
         const loadingTask = getDocument({
@@ -561,7 +569,7 @@ class Driver {
 
     if (!task.pdfDoc) {
       const dataUrl = this.canvas.toDataURL("image/png");
-      this._sendResult(dataUrl, task, failure, () => {
+      this._sendResult(dataUrl, task, failure).then(() => {
         this._log(
           "done" + (failure ? " (failed !: " + failure + ")" : "") + "\n"
         );
@@ -596,23 +604,48 @@ class Driver {
         this._log(
           " Loading page " + task.pageNum + "/" + task.pdfDoc.numPages + "... "
         );
-        this.canvas.mozOpaque = true;
         ctx = this.canvas.getContext("2d", { alpha: false });
         task.pdfDoc.getPage(task.pageNum).then(
           page => {
-            const viewport = page.getViewport({
+            // Default to creating the test images at the devices pixel ratio,
+            // unless the test explicitly specifies an output scale.
+            const outputScale = task.outputScale || window.devicePixelRatio;
+            let viewport = page.getViewport({
               scale: PixelsPerInch.PDF_TO_CSS_UNITS,
             });
-            this.canvas.width = viewport.width;
-            this.canvas.height = viewport.height;
+            // Restrict the test from creating a canvas that is too big.
+            const MAX_CANVAS_PIXEL_DIMENSION = 4096;
+            const largestDimension = Math.max(viewport.width, viewport.height);
+            if (
+              Math.floor(largestDimension * outputScale) >
+              MAX_CANVAS_PIXEL_DIMENSION
+            ) {
+              const rescale = MAX_CANVAS_PIXEL_DIMENSION / largestDimension;
+              viewport = viewport.clone({
+                scale: PixelsPerInch.PDF_TO_CSS_UNITS * rescale,
+              });
+            }
+            const pixelWidth = Math.floor(viewport.width * outputScale);
+            const pixelHeight = Math.floor(viewport.height * outputScale);
+            task.viewportWidth = Math.floor(viewport.width);
+            task.viewportHeight = Math.floor(viewport.height);
+            task.outputScale = outputScale;
+            this.canvas.width = pixelWidth;
+            this.canvas.height = pixelHeight;
+            this.canvas.style.width = Math.floor(viewport.width) + "px";
+            this.canvas.style.height = Math.floor(viewport.height) + "px";
             this._clearCanvas();
+
+            const transform =
+              outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
 
             // Initialize various `eq` test subtypes, see comment below.
             let renderAnnotations = false,
               renderForms = false,
               renderPrint = false,
               renderXfa = false,
-              annotationCanvasMap = null;
+              annotationCanvasMap = null,
+              pageColors = null;
 
             if (task.annotationStorage) {
               const entries = Object.entries(task.annotationStorage),
@@ -631,8 +664,8 @@ class Driver {
                 textLayerCanvas = document.createElement("canvas");
                 this.textLayerCanvas = textLayerCanvas;
               }
-              textLayerCanvas.width = viewport.width;
-              textLayerCanvas.height = viewport.height;
+              textLayerCanvas.width = pixelWidth;
+              textLayerCanvas.height = pixelHeight;
               const textLayerContext = textLayerCanvas.getContext("2d");
               textLayerContext.clearRect(
                 0,
@@ -640,11 +673,11 @@ class Driver {
                 textLayerCanvas.width,
                 textLayerCanvas.height
               );
+              textLayerContext.scale(outputScale, outputScale);
               const enhanceText = !!task.enhance;
               // The text builder will draw its content on the test canvas
               initPromise = page
                 .getTextContent({
-                  normalizeWhitespace: true,
                   includeMarkedContent: true,
                 })
                 .then(function (textContent) {
@@ -663,6 +696,7 @@ class Driver {
               renderForms = !!task.forms;
               renderPrint = !!task.print;
               renderXfa = !!task.enableXfa;
+              pageColors = task.pageColors || null;
 
               // Render the annotation layer if necessary.
               if (renderAnnotations || renderForms || renderXfa) {
@@ -672,8 +706,8 @@ class Driver {
                   annotationLayerCanvas = document.createElement("canvas");
                   this.annotationLayerCanvas = annotationLayerCanvas;
                 }
-                annotationLayerCanvas.width = viewport.width;
-                annotationLayerCanvas.height = viewport.height;
+                annotationLayerCanvas.width = pixelWidth;
+                annotationLayerCanvas.height = pixelHeight;
                 annotationLayerContext = annotationLayerCanvas.getContext("2d");
                 annotationLayerContext.clearRect(
                   0,
@@ -681,6 +715,7 @@ class Driver {
                   annotationLayerCanvas.width,
                   annotationLayerCanvas.height
                 );
+                annotationLayerContext.scale(outputScale, outputScale);
 
                 if (!renderXfa) {
                   // The annotation builder will draw its content
@@ -709,9 +744,13 @@ class Driver {
               viewport,
               optionalContentConfigPromise: task.optionalContentConfigPromise,
               annotationCanvasMap,
+              pageColors,
+              transform,
             };
             if (renderForms) {
-              renderContext.annotationMode = AnnotationMode.ENABLE_FORMS;
+              renderContext.annotationMode = task.annotationStorage
+                ? AnnotationMode.ENABLE_STORAGE
+                : AnnotationMode.ENABLE_FORMS;
             } else if (renderPrint) {
               if (task.annotationStorage) {
                 renderContext.annotationMode = AnnotationMode.ENABLE_STORAGE;
@@ -725,7 +764,7 @@ class Driver {
                 ctx.save();
                 ctx.globalCompositeOperation = "screen";
                 ctx.fillStyle = "rgb(128, 255, 128)"; // making it green
-                ctx.fillRect(0, 0, viewport.width, viewport.height);
+                ctx.fillRect(0, 0, pixelWidth, pixelHeight);
                 ctx.restore();
                 ctx.drawImage(textLayerCanvas, 0, 0);
               }
@@ -755,6 +794,7 @@ class Driver {
                     Rasterize.annotationLayer(
                       annotationLayerContext,
                       viewport,
+                      outputScale,
                       data,
                       annotationCanvasMap,
                       page,
@@ -793,7 +833,7 @@ class Driver {
     this._log("Snapshotting... ");
 
     const dataUrl = this.canvas.toDataURL("image/png");
-    this._sendResult(dataUrl, task, failure, () => {
+    this._sendResult(dataUrl, task, failure).then(() => {
       this._log(
         "done" + (failure ? " (failed !: " + failure + ")" : "") + "\n"
       );
@@ -807,14 +847,9 @@ class Driver {
     this.end.textContent = "Tests finished. Close this window!";
 
     // Send the quit request
-    const r = new XMLHttpRequest();
-    r.open("POST", `/tellMeToQuit?browser=${escape(this.browser)}`, false);
-    r.onreadystatechange = function (e) {
-      if (r.readyState === 4) {
-        window.close();
-      }
-    };
-    r.send(null);
+    fetch(`/tellMeToQuit?browser=${escape(this.browser)}`, {
+      method: "POST",
+    });
   }
 
   _info(message) {
@@ -852,7 +887,7 @@ class Driver {
     }
   }
 
-  _sendResult(snapshot, task, failure, callback) {
+  _sendResult(snapshot, task, failure) {
     const result = JSON.stringify({
       browser: this.browser,
       id: task.id,
@@ -864,30 +899,42 @@ class Driver {
       page: task.pageNum,
       snapshot,
       stats: task.stats.times,
+      viewportWidth: task.viewportWidth,
+      viewportHeight: task.viewportHeight,
+      outputScale: task.outputScale,
     });
-    this._send("/submit_task_results", result, callback);
+    return this._send("/submit_task_results", result);
   }
 
-  _send(url, message, callback) {
-    const r = new XMLHttpRequest();
-    r.open("POST", url, true);
-    r.setRequestHeader("Content-Type", "application/json");
-    r.onreadystatechange = e => {
-      if (r.readyState === 4) {
-        this.inFlightRequests--;
-
-        // Retry until successful
-        if (r.status !== 200) {
-          setTimeout(() => {
-            this._send(url, message);
-          });
-        }
-        if (callback) {
-          callback();
-        }
-      }
-    };
+  _send(url, message) {
+    const capability = createPromiseCapability();
     this.inflight.textContent = this.inFlightRequests++;
-    r.send(message);
+
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: message,
+    })
+      .then(response => {
+        // Retry until successful.
+        if (!response.ok || response.status !== 200) {
+          throw new Error(response.statusText);
+        }
+
+        this.inFlightRequests--;
+        capability.resolve();
+      })
+      .catch(reason => {
+        console.warn(`Driver._send failed (${url}): ${reason}`);
+
+        this.inFlightRequests--;
+        capability.resolve();
+
+        this._send(url, message);
+      });
+
+    return capability.promise;
   }
 }

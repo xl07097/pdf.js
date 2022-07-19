@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* eslint-disable no-var */
+/* eslint-disable no-var, unicorn/prefer-at */
 
 "use strict";
 
@@ -451,7 +451,8 @@ function checkEq(task, results, browser, masterMode) {
     if (!pageResults[page]) {
       continue;
     }
-    var testSnapshot = pageResults[page].snapshot;
+    const pageResult = pageResults[page];
+    let testSnapshot = pageResult.snapshot;
     if (testSnapshot && testSnapshot.startsWith("data:image/png;base64,")) {
       testSnapshot = Buffer.from(testSnapshot.substring(22), "base64");
     } else {
@@ -492,8 +493,8 @@ function checkEq(task, results, browser, masterMode) {
           refSnapshot
         );
 
-        // NB: this follows the format of Mozilla reftest output so that
-        // we can reuse its reftest-analyzer script
+        // This no longer follows the format of Mozilla reftest output.
+        const viewportString = `(${pageResult.viewportWidth}x${pageResult.viewportHeight}x${pageResult.outputScale})`;
         fs.appendFileSync(
           eqLog,
           "REFTEST TEST-UNEXPECTED-FAIL | " +
@@ -503,10 +504,10 @@ function checkEq(task, results, browser, masterMode) {
             "-page" +
             (page + 1) +
             " | image comparison (==)\n" +
-            "REFTEST   IMAGE 1 (TEST): " +
+            `REFTEST   IMAGE 1 (TEST)${viewportString}: ` +
             path.join(testSnapshotDir, page + 1 + ".png") +
             "\n" +
-            "REFTEST   IMAGE 2 (REFERENCE): " +
+            `REFTEST   IMAGE 2 (REFERENCE)${viewportString}: ` +
             path.join(testSnapshotDir, page + 1 + "_ref.png") +
             "\n"
         );
@@ -735,6 +736,9 @@ function refTestPostHandler(req, res) {
     taskResults[round][page] = {
       failure,
       snapshot,
+      viewportWidth: data.viewportWidth,
+      viewportHeight: data.viewportHeight,
+      outputScale: data.outputScale,
     };
     if (stats) {
       stats.push({
@@ -944,8 +948,9 @@ async function startBrowser(browserName, startUrl = "") {
       "pdfjs.disabled": true,
       "browser.helperApps.neverAsk.saveToDisk": "application/pdf",
       // Avoid popup when saving is done
-      "browser.download.improvements_to_download_panel": false,
+      "browser.download.always_ask_before_handling_new_types": true,
       "browser.download.panel.shown": true,
+      "browser.download.alwaysOpenPanel": false,
       // Save file in output
       "browser.download.folderList": 2,
       "browser.download.dir": tempDir,
@@ -955,6 +960,10 @@ async function startBrowser(browserName, startUrl = "") {
       print_printer: "PDF",
       "print.printer_PDF.print_to_file": true,
       "print.printer_PDF.print_to_filename": printFile,
+      // Enable OffscreenCanvas
+      "gfx.offscreencanvas.enabled": true,
+      // Disable gpu acceleration
+      "gfx.canvas.accelerated": false,
     };
   }
 

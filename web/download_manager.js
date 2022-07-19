@@ -15,8 +15,7 @@
 
 /** @typedef {import("./interfaces").IDownloadManager} IDownloadManager */
 
-import { createObjectURL, createValidAbsoluteUrl, isPdfFile } from "pdfjs-lib";
-import { compatibilityParams } from "./app_options.js";
+import { createValidAbsoluteUrl, isPdfFile } from "pdfjs-lib";
 
 if (typeof PDFJSDev !== "undefined" && !PDFJSDev.test("CHROME || GENERIC")) {
   throw new Error(
@@ -39,7 +38,7 @@ function download(blobUrl, filename) {
   }
   // <a> must be in the document for recent Firefox versions,
   // otherwise .click() is ignored.
-  (document.body || document.documentElement).appendChild(a);
+  (document.body || document.documentElement).append(a);
   a.click();
   a.remove();
 }
@@ -61,10 +60,8 @@ class DownloadManager {
   }
 
   downloadData(data, filename, contentType) {
-    const blobUrl = createObjectURL(
-      data,
-      contentType,
-      compatibilityParams.disableCreateObjectURL
+    const blobUrl = URL.createObjectURL(
+      new Blob([data], { type: contentType })
     );
     download(blobUrl, filename);
   }
@@ -76,7 +73,7 @@ class DownloadManager {
     const isPdfData = isPdfFile(filename);
     const contentType = isPdfData ? "application/pdf" : "";
 
-    if (isPdfData && !compatibilityParams.disableCreateObjectURL) {
+    if (isPdfData) {
       let blobUrl = this._openBlobUrls.get(element);
       if (!blobUrl) {
         blobUrl = URL.createObjectURL(new Blob([data], { type: contentType }));
@@ -112,18 +109,7 @@ class DownloadManager {
     return false;
   }
 
-  /**
-   * @param sourceEventType {string} Used to signal what triggered the download.
-   *   The version of PDF.js integrated with Firefox uses this to to determine
-   *   which dialog to show. "save" triggers "save as" and "download" triggers
-   *   the "open with" dialog.
-   */
-  download(blob, url, filename, sourceEventType = "download") {
-    if (compatibilityParams.disableCreateObjectURL) {
-      // URL.createObjectURL is not supported
-      this.downloadUrl(url, filename);
-      return;
-    }
+  download(blob, url, filename) {
     const blobUrl = URL.createObjectURL(blob);
     download(blobUrl, filename);
   }

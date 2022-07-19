@@ -23,8 +23,6 @@ const MAX_AUTO_SCALE = 1.25;
 const SCROLLBAR_PADDING = 40;
 const VERTICAL_PADDING = 5;
 
-const LOADINGBAR_END_OFFSET_VAR = "--loadingBar-end-offset";
-
 const RenderingStates = {
   INITIAL: 0,
   RUNNING: 1,
@@ -78,24 +76,29 @@ const SpreadMode = {
 const AutoPrintRegExp = /\bprint\s*\(/;
 
 /**
- * Returns scale factor for the canvas. It makes sense for the HiDPI displays.
- * @returns {Object} The object with horizontal (sx) and vertical (sy)
- *                   scales. The scaled property is set to false if scaling is
- *                   not required, true otherwise.
+ * Scale factors for the canvas, necessary with HiDPI displays.
  */
-function getOutputScale(ctx) {
-  const devicePixelRatio = window.devicePixelRatio || 1;
-  const backingStoreRatio =
-    ctx.webkitBackingStorePixelRatio ||
-    ctx.mozBackingStorePixelRatio ||
-    ctx.backingStorePixelRatio ||
-    1;
-  const pixelRatio = devicePixelRatio / backingStoreRatio;
-  return {
-    sx: pixelRatio,
-    sy: pixelRatio,
-    scaled: pixelRatio !== 1,
-  };
+class OutputScale {
+  constructor() {
+    const pixelRatio = window.devicePixelRatio || 1;
+
+    /**
+     * @type {number} Horizontal scale.
+     */
+    this.sx = pixelRatio;
+
+    /**
+     * @type {number} Vertical scale.
+     */
+    this.sy = pixelRatio;
+  }
+
+  /**
+   * @type {boolean} Returns `true` when scaling is required, `false` otherwise.
+   */
+  get scaled() {
+    return this.sx !== 1 || this.sy !== 1;
+  }
 }
 
 /**
@@ -200,6 +203,24 @@ function parseQueryString(query) {
   return params;
 }
 
+const NullCharactersRegExp = /\x00/g;
+const InvisibleCharactersRegExp = /[\x01-\x1F]/g;
+
+/**
+ * @param {string} str
+ * @param {boolean} [replaceInvisible]
+ */
+function removeNullCharacters(str, replaceInvisible = false) {
+  if (typeof str !== "string") {
+    console.error(`The argument must be a string.`);
+    return str;
+  }
+  if (replaceInvisible) {
+    str = str.replace(InvisibleCharactersRegExp, " ");
+  }
+  return str.replace(NullCharactersRegExp, "");
+}
+
 /**
  * Use binary search to find the index of the first item in a given array which
  * passes a given condition. The items are expected to be sorted in the sense
@@ -209,8 +230,8 @@ function parseQueryString(query) {
  * @returns {number} Index of the first array element to pass the test,
  *                   or |items.length| if no such element exists.
  */
-function binarySearchFirstItem(items, condition) {
-  let minIndex = 0;
+function binarySearchFirstItem(items, condition, start = 0) {
+  let minIndex = start;
   let maxIndex = items.length - 1;
 
   if (maxIndex < 0 || !condition(items[maxIndex])) {
@@ -567,7 +588,7 @@ function getVisibleElements({
   }
 
   const first = visible[0],
-    last = visible[visible.length - 1];
+    last = visible.at(-1);
 
   if (sortByVisibility) {
     visible.sort(function (a, b) {
@@ -656,49 +677,52 @@ const animationStarted = new Promise(function (resolve) {
   window.requestAnimationFrame(resolve);
 });
 
+const docStyle =
+  typeof PDFJSDev !== "undefined" &&
+  PDFJSDev.test("LIB") &&
+  typeof document === "undefined"
+    ? null
+    : document.documentElement.style;
+
 function clamp(v, min, max) {
   return Math.min(Math.max(v, min), max);
 }
 
 class ProgressBar {
-  constructor(id, { height, width, units } = {}) {
-    this.visible = true;
+  #classList = null;
 
-    // Fetch the sub-elements for later.
-    this.div = document.querySelector(id + " .progress");
-    // Get the loading bar element, so it can be resized to fit the viewer.
-    this.bar = this.div.parentNode;
+  #percent = 0;
 
-    // Get options, with sensible defaults.
-    this.height = height || 100;
-    this.width = width || 100;
-    this.units = units || "%";
+  #visible = true;
 
-    // Initialize heights.
-    this.div.style.height = this.height + this.units;
-    this.percent = 0;
-  }
-
-  _updateBar() {
-    if (this._indeterminate) {
-      this.div.classList.add("indeterminate");
-      this.div.style.width = this.width + this.units;
-      return;
+  constructor(id) {
+    if (
+      (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) &&
+      arguments.length > 1
+    ) {
+      throw new Error(
+        "ProgressBar no longer accepts any additional options, " +
+          "please use CSS rules to modify its appearance instead."
+      );
     }
-
-    this.div.classList.remove("indeterminate");
-    const progressSize = (this.width * this._percent) / 100;
-    this.div.style.width = progressSize + this.units;
+    const bar = document.getElementById(id);
+    this.#classList = bar.classList;
   }
 
   get percent() {
-    return this._percent;
+    return this.#percent;
   }
 
   set percent(val) {
-    this._indeterminate = isNaN(val);
-    this._percent = clamp(val, 0, 100);
-    this._updateBar();
+    this.#percent = clamp(val, 0, 100);
+
+    if (isNaN(val)) {
+      this.#classList.add("indeterminate");
+      return;
+    }
+    this.#classList.remove("indeterminate");
+
+    docStyle.setProperty("--progressBar-percent", `${this.#percent}%`);
   }
 
   setWidth(viewer) {
@@ -708,25 +732,24 @@ class ProgressBar {
     const container = viewer.parentNode;
     const scrollbarWidth = container.offsetWidth - viewer.offsetWidth;
     if (scrollbarWidth > 0) {
-      const doc = document.documentElement;
-      doc.style.setProperty(LOADINGBAR_END_OFFSET_VAR, `${scrollbarWidth}px`);
+      docStyle.setProperty("--progressBar-end-offset", `${scrollbarWidth}px`);
     }
   }
 
   hide() {
-    if (!this.visible) {
+    if (!this.#visible) {
       return;
     }
-    this.visible = false;
-    this.bar.classList.add("hidden");
+    this.#visible = false;
+    this.#classList.add("hidden");
   }
 
   show() {
-    if (this.visible) {
+    if (this.#visible) {
       return;
     }
-    this.visible = true;
-    this.bar.classList.remove("hidden");
+    this.#visible = true;
+    this.#classList.remove("hidden");
   }
 }
 
@@ -821,8 +844,8 @@ export {
   DEFAULT_SCALE,
   DEFAULT_SCALE_DELTA,
   DEFAULT_SCALE_VALUE,
+  docStyle,
   getActiveOrFocusedElement,
-  getOutputScale,
   getPageSizeInches,
   getVisibleElements,
   isPortraitOrientation,
@@ -835,9 +858,11 @@ export {
   noContextMenuHandler,
   normalizeWheelEventDelta,
   normalizeWheelEventDirection,
+  OutputScale,
   parseQueryString,
   PresentationModeState,
   ProgressBar,
+  removeNullCharacters,
   RendererType,
   RenderingStates,
   roundToDivide,
