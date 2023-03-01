@@ -38,8 +38,7 @@ function getArrayBuffer(xhr) {
   if (typeof data !== "string") {
     return data;
   }
-  const array = stringToBytes(data);
-  return array.buffer;
+  return stringToBytes(data).buffer;
 }
 
 class NetworkManager {
@@ -82,7 +81,7 @@ class NetworkManager {
     xhr.withCredentials = this.withCredentials;
     for (const property in this.httpHeaders) {
       const value = this.httpHeaders[property];
-      if (typeof value === "undefined") {
+      if (value === undefined) {
         continue;
       }
       xhr.setRequestHeader(property, value);

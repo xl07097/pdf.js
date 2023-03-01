@@ -16,14 +16,16 @@
 /** @typedef {import("./editor.js").AnnotationEditor} AnnotationEditor */
 // eslint-disable-next-line max-len
 /** @typedef {import("./tools.js").AnnotationEditorUIManager} AnnotationEditorUIManager */
+/** @typedef {import("../display_utils.js").PageViewport} PageViewport */
 // eslint-disable-next-line max-len
-/** @typedef {import("../annotation_storage.js").AnnotationStorage} AnnotationStorage */
+/** @typedef {import("../../web/text_accessibility.js").TextAccessibilityManager} TextAccessibilityManager */
 /** @typedef {import("../../web/interfaces").IL10n} IL10n */
 
-import { bindEvents, KeyboardManager } from "./tools.js";
-import { AnnotationEditorType } from "../../shared/util.js";
+import { AnnotationEditorType, FeatureTest } from "../../shared/util.js";
+import { bindEvents } from "./tools.js";
 import { FreeTextEditor } from "./freetext.js";
 import { InkEditor } from "./ink.js";
+import { setLayerDimensions } from "../display_utils.js";
 
 /**
  * @typedef {Object} AnnotationEditorLayerOptions
@@ -31,51 +33,37 @@ import { InkEditor } from "./ink.js";
  * @property {HTMLDivElement} div
  * @property {AnnotationEditorUIManager} uiManager
  * @property {boolean} enabled
- * @property {AnnotationStorage} annotationStorag
+ * @property {TextAccessibilityManager} [accessibilityManager]
  * @property {number} pageIndex
  * @property {IL10n} l10n
+ */
+
+/**
+ * @typedef {Object} RenderEditorLayerOptions
+ * @property {PageViewport} viewport
  */
 
 /**
  * Manage all the different editors on a page.
  */
 class AnnotationEditorLayer {
-  #boundClick;
+  #accessibilityManager;
+
+  #allowClick = false;
+
+  #boundPointerup = this.pointerup.bind(this);
+
+  #boundPointerdown = this.pointerdown.bind(this);
 
   #editors = new Map();
+
+  #hadPointerDown = false;
 
   #isCleaningUp = false;
 
   #uiManager;
 
   static _initialized = false;
-
-  static _keyboardManager = new KeyboardManager([
-    [["ctrl+a", "mac+meta+a"], AnnotationEditorLayer.prototype.selectAll],
-    [["ctrl+c", "mac+meta+c"], AnnotationEditorLayer.prototype.copy],
-    [["ctrl+v", "mac+meta+v"], AnnotationEditorLayer.prototype.paste],
-    [["ctrl+x", "mac+meta+x"], AnnotationEditorLayer.prototype.cut],
-    [["ctrl+z", "mac+meta+z"], AnnotationEditorLayer.prototype.undo],
-    [
-      ["ctrl+y", "ctrl+shift+Z", "mac+meta+shift+Z"],
-      AnnotationEditorLayer.prototype.redo,
-    ],
-    [
-      [
-        "Backspace",
-        "alt+Backspace",
-        "ctrl+Backspace",
-        "shift+Backspace",
-        "mac+Backspace",
-        "mac+alt+Backspace",
-        "mac+ctrl+Backspace",
-        "Delete",
-        "ctrl+Delete",
-        "shift+Delete",
-      ],
-      AnnotationEditorLayer.prototype.delete,
-    ],
-  ]);
 
   /**
    * @param {AnnotationEditorLayerOptions} options
@@ -84,26 +72,25 @@ class AnnotationEditorLayer {
     if (!AnnotationEditorLayer._initialized) {
       AnnotationEditorLayer._initialized = true;
       FreeTextEditor.initialize(options.l10n);
-
-      options.uiManager.registerEditorTypes([FreeTextEditor, InkEditor]);
+      InkEditor.initialize(options.l10n);
     }
+    options.uiManager.registerEditorTypes([FreeTextEditor, InkEditor]);
+
     this.#uiManager = options.uiManager;
-    this.annotationStorage = options.annotationStorage;
     this.pageIndex = options.pageIndex;
     this.div = options.div;
-    this.#boundClick = this.click.bind(this);
-
-    for (const editor of this.#uiManager.getEditors(options.pageIndex)) {
-      this.add(editor);
-    }
+    this.#accessibilityManager = options.accessibilityManager;
 
     this.#uiManager.addLayer(this);
+  }
+
+  get isEmpty() {
+    return this.#editors.size === 0;
   }
 
   /**
    * Update the toolbar if it's required to reflect the tool currently used.
    * @param {number} mode
-   * @returns {undefined}
    */
   updateToolbar(mode) {
     this.#uiManager.updateToolbar(mode);
@@ -118,8 +105,23 @@ class AnnotationEditorLayer {
     if (mode === AnnotationEditorType.INK) {
       // We always want to an ink editor ready to draw in.
       this.addInkEditorIfNeeded(false);
+      this.disableClick();
+    } else {
+      this.enableClick();
     }
-    this.setActiveEditor(null);
+    this.#uiManager.unselectAll();
+
+    if (mode !== AnnotationEditorType.NONE) {
+      this.div.classList.toggle(
+        "freeTextEditing",
+        mode === AnnotationEditorType.FREETEXT
+      );
+      this.div.classList.toggle(
+        "inkEditing",
+        mode === AnnotationEditorType.INK
+      );
+      this.div.hidden = false;
+    }
   }
 
   addInkEditorIfNeeded(isCommitting) {
@@ -162,69 +164,14 @@ class AnnotationEditorLayer {
   }
 
   /**
-   * Undo the last command.
-   */
-  undo() {
-    this.#uiManager.undo();
-  }
-
-  /**
-   * Redo the last command.
-   */
-  redo() {
-    this.#uiManager.redo();
-  }
-
-  /**
-   * Suppress the selected editor or all editors.
-   * @returns {undefined}
-   */
-  delete() {
-    this.#uiManager.delete();
-  }
-
-  /**
-   * Copy the selected editor.
-   */
-  copy() {
-    this.#uiManager.copy();
-  }
-
-  /**
-   * Cut the selected editor.
-   */
-  cut() {
-    this.#uiManager.cut();
-  }
-
-  /**
-   * Paste a previously copied editor.
-   * @returns {undefined}
-   */
-  paste() {
-    this.#uiManager.paste();
-  }
-
-  /**
-   * Select all the editors.
-   */
-  selectAll() {
-    this.#uiManager.selectAll();
-  }
-
-  /**
-   * Unselect all the editors.
-   */
-  unselectAll() {
-    this.#uiManager.unselectAll();
-  }
-
-  /**
    * Enable pointer events on the main div in order to enable
    * editor creation.
    */
   enable() {
     this.div.style.pointerEvents = "auto";
+    for (const editor of this.#editors.values()) {
+      editor.enableEditing();
+    }
   }
 
   /**
@@ -232,6 +179,13 @@ class AnnotationEditorLayer {
    */
   disable() {
     this.div.style.pointerEvents = "none";
+    for (const editor of this.#editors.values()) {
+      editor.disableEditing();
+    }
+    this.#cleanup();
+    if (this.isEmpty) {
+      this.div.hidden = true;
+    }
   }
 
   /**
@@ -245,19 +199,16 @@ class AnnotationEditorLayer {
     }
 
     this.#uiManager.setActiveEditor(editor);
+  }
 
-    if (currentActive && currentActive !== editor) {
-      currentActive.commitOrRemove();
-    }
+  enableClick() {
+    this.div.addEventListener("pointerdown", this.#boundPointerdown);
+    this.div.addEventListener("pointerup", this.#boundPointerup);
+  }
 
-    this.#uiManager.allowClick =
-      this.#uiManager.getMode() === AnnotationEditorType.INK;
-    if (editor) {
-      this.unselectAll();
-      this.div.removeEventListener("click", this.#boundClick);
-    } else {
-      this.div.addEventListener("click", this.#boundClick);
-    }
+  disableClick() {
+    this.div.removeEventListener("pointerdown", this.#boundPointerdown);
+    this.div.removeEventListener("pointerup", this.#boundPointerup);
   }
 
   attach(editor) {
@@ -266,6 +217,7 @@ class AnnotationEditorLayer {
 
   detach(editor) {
     this.#editors.delete(editor.id);
+    this.#accessibilityManager?.removePointerInTextLayer(editor.contentDiv);
   }
 
   /**
@@ -278,13 +230,19 @@ class AnnotationEditorLayer {
 
     this.#uiManager.removeEditor(editor);
     this.detach(editor);
-    this.annotationStorage.removeKey(editor.id);
-    editor.div.remove();
-    editor.isAttachedToDOM = false;
-    if (this.#uiManager.isActive(editor) || this.#editors.size === 0) {
-      this.setActiveEditor(null);
-      this.#uiManager.allowClick = true;
-    }
+    editor.div.style.display = "none";
+    setTimeout(() => {
+      // When the div is removed from DOM the focus can move on the
+      // document.body, so we just slightly postpone the removal in
+      // order to let an element potentially grab the focus before
+      // the body.
+      editor.div.style.display = "";
+      editor.div.remove();
+      editor.isAttachedToDOM = false;
+      if (document.activeElement === document.body) {
+        this.#uiManager.focusMainContainer();
+      }
+    }, 0);
 
     if (!this.#isCleaningUp) {
       this.addInkEditorIfNeeded(/* isCommitting = */ false);
@@ -295,21 +253,15 @@ class AnnotationEditorLayer {
    * An editor can have a different parent, for example after having
    * being dragged and droped from a page to another.
    * @param {AnnotationEditor} editor
-   * @returns {undefined}
    */
   #changeParent(editor) {
     if (editor.parent === this) {
       return;
     }
 
-    if (this.#uiManager.isActive(editor)) {
-      editor.parent.setActiveEditor(null);
-    }
-
     this.attach(editor);
-    editor.pageIndex = this.pageIndex;
-    editor.parent.detach(editor);
-    editor.parent = this;
+    editor.parent?.detach(editor);
+    editor.setParent(this);
     if (editor.div && editor.isAttachedToDOM) {
       editor.div.remove();
       this.div.append(editor.div);
@@ -322,7 +274,6 @@ class AnnotationEditorLayer {
    */
   add(editor) {
     this.#changeParent(editor);
-    this.annotationStorage.setValue(editor.id, editor);
     this.#uiManager.addEditor(editor);
     this.attach(editor);
 
@@ -332,7 +283,18 @@ class AnnotationEditorLayer {
       editor.isAttachedToDOM = true;
     }
 
+    this.moveEditorInDOM(editor);
     editor.onceAdded();
+    this.#uiManager.addToAnnotationStorage(editor);
+  }
+
+  moveEditorInDOM(editor) {
+    this.#accessibilityManager?.moveElementInDOM(
+      this.div,
+      editor.div,
+      editor.contentDiv,
+      /* isRemovable = */ true
+    );
   }
 
   /**
@@ -401,8 +363,23 @@ class AnnotationEditorLayer {
   }
 
   /**
+   * Create a new editor
+   * @param {Object} data
+   * @returns {AnnotationEditor}
+   */
+  deserialize(data) {
+    switch (data.annotationType) {
+      case AnnotationEditorType.FREETEXT:
+        return FreeTextEditor.deserialize(data, this, this.#uiManager);
+      case AnnotationEditorType.INK:
+        return InkEditor.deserialize(data, this, this.#uiManager);
+    }
+    return null;
+  }
+
+  /**
    * Create and add a new editor.
-   * @param {MouseEvent} event
+   * @param {PointerEvent} event
    * @returns {AnnotationEditor}
    */
   #createAndAddNewEditor(event) {
@@ -412,6 +389,7 @@ class AnnotationEditorLayer {
       id,
       x: event.offsetX,
       y: event.offsetY,
+      uiManager: this.#uiManager,
     });
     if (editor) {
       this.add(editor);
@@ -421,13 +399,63 @@ class AnnotationEditorLayer {
   }
 
   /**
-   * Mouseclick callback.
-   * @param {MouseEvent} event
-   * @returns {undefined}
+   * Set the last selected editor.
+   * @param {AnnotationEditor} editor
    */
-  click(event) {
-    if (!this.#uiManager.allowClick) {
-      this.#uiManager.allowClick = true;
+  setSelected(editor) {
+    this.#uiManager.setSelected(editor);
+  }
+
+  /**
+   * Add or remove an editor the current selection.
+   * @param {AnnotationEditor} editor
+   */
+  toggleSelected(editor) {
+    this.#uiManager.toggleSelected(editor);
+  }
+
+  /**
+   * Check if the editor is selected.
+   * @param {AnnotationEditor} editor
+   */
+  isSelected(editor) {
+    return this.#uiManager.isSelected(editor);
+  }
+
+  /**
+   * Unselect an editor.
+   * @param {AnnotationEditor} editor
+   */
+  unselect(editor) {
+    this.#uiManager.unselect(editor);
+  }
+
+  /**
+   * Pointerup callback.
+   * @param {PointerEvent} event
+   */
+  pointerup(event) {
+    const { isMac } = FeatureTest.platform;
+    if (event.button !== 0 || (event.ctrlKey && isMac)) {
+      // Don't create an editor on right click.
+      return;
+    }
+
+    if (event.target !== this.div) {
+      return;
+    }
+
+    if (!this.#hadPointerDown) {
+      // It can happen when the user starts a drag inside a text editor
+      // and then releases the mouse button outside of it. In such a case
+      // we don't want to create a new editor, hence we check that a pointerdown
+      // occured on this div previously.
+      return;
+    }
+    this.#hadPointerDown = false;
+
+    if (!this.#allowClick) {
+      this.#allowClick = true;
       return;
     }
 
@@ -435,9 +463,29 @@ class AnnotationEditorLayer {
   }
 
   /**
+   * Pointerdown callback.
+   * @param {PointerEvent} event
+   */
+  pointerdown(event) {
+    const { isMac } = FeatureTest.platform;
+    if (event.button !== 0 || (event.ctrlKey && isMac)) {
+      // Do nothing on right click.
+      return;
+    }
+
+    if (event.target !== this.div) {
+      return;
+    }
+
+    this.#hadPointerDown = true;
+
+    const editor = this.#uiManager.getActive();
+    this.#allowClick = !editor || editor.isEmpty();
+  }
+
+  /**
    * Drag callback.
    * @param {DragEvent} event
-   * @returns {undefined}
    */
   drop(event) {
     const id = event.dataTransfer.getData("text/plain");
@@ -456,6 +504,8 @@ class AnnotationEditorLayer {
     const endY = event.clientY - rect.y;
 
     editor.translate(endX - editor.startX, endY - editor.startY);
+    this.moveEditorInDOM(editor);
+    editor.div.focus();
   }
 
   /**
@@ -467,25 +517,20 @@ class AnnotationEditorLayer {
   }
 
   /**
-   * Keydown callback.
-   * @param {KeyboardEvent} event
-   */
-  keydown(event) {
-    if (!this.#uiManager.getActive()?.shouldGetKeyboardEvents()) {
-      AnnotationEditorLayer._keyboardManager.exec(this, event);
-    }
-  }
-
-  /**
    * Destroy the main editor.
    */
   destroy() {
+    if (this.#uiManager.getActive()?.parent === this) {
+      this.#uiManager.setActiveEditor(null);
+    }
+
     for (const editor of this.#editors.values()) {
+      this.#accessibilityManager?.removePointerInTextLayer(editor.contentDiv);
+      editor.setParent(null);
       editor.isAttachedToDOM = false;
       editor.div.remove();
-      editor.parent = null;
-      this.div = null;
     }
+    this.div = null;
     this.#editors.clear();
     this.#uiManager.removeLayer(this);
   }
@@ -505,33 +550,31 @@ class AnnotationEditorLayer {
 
   /**
    * Render the main editor.
-   * @param {Object} parameters
+   * @param {RenderEditorLayerOptions} parameters
    */
-  render(parameters) {
-    this.viewport = parameters.viewport;
-    bindEvents(this, this.div, ["dragover", "drop", "keydown"]);
-    this.div.addEventListener("click", this.#boundClick);
-    this.setDimensions();
+  render({ viewport }) {
+    this.viewport = viewport;
+    setLayerDimensions(this.div, viewport);
+    bindEvents(this, this.div, ["dragover", "drop"]);
+    for (const editor of this.#uiManager.getEditors(this.pageIndex)) {
+      this.add(editor);
+    }
     this.updateMode();
   }
 
   /**
    * Update the main editor.
-   * @param {Object} parameters
+   * @param {RenderEditorLayerOptions} parameters
    */
-  update(parameters) {
-    this.setActiveEditor(null);
-    this.viewport = parameters.viewport;
-    this.setDimensions();
-    this.updateMode();
-  }
+  update({ viewport }) {
+    // Editors have their dimensions/positions in percent so to avoid any
+    // issues (see #15582), we must commit the current one before changing
+    // the viewport.
+    this.#uiManager.commitOrRemove();
 
-  /**
-   * Get the scale factor from the viewport.
-   * @returns {number}
-   */
-  get scaleFactor() {
-    return this.viewport.scale;
+    this.viewport = viewport;
+    setLayerDimensions(this.div, { rotation: viewport.rotation });
+    this.updateMode();
   }
 
   /**
@@ -539,31 +582,8 @@ class AnnotationEditorLayer {
    * @returns {Object} dimensions.
    */
   get pageDimensions() {
-    const [pageLLx, pageLLy, pageURx, pageURy] = this.viewport.viewBox;
-    const width = pageURx - pageLLx;
-    const height = pageURy - pageLLy;
-
-    return [width, height];
-  }
-
-  get viewportBaseDimensions() {
-    const { width, height, rotation } = this.viewport;
-    return rotation % 180 === 0 ? [width, height] : [height, width];
-  }
-
-  /**
-   * Set the dimensions of the main div.
-   */
-  setDimensions() {
-    const { width, height, rotation } = this.viewport;
-
-    const flipOrientation = rotation % 180 !== 0,
-      widthStr = Math.floor(width) + "px",
-      heightStr = Math.floor(height) + "px";
-
-    this.div.style.width = flipOrientation ? heightStr : widthStr;
-    this.div.style.height = flipOrientation ? widthStr : heightStr;
-    this.div.setAttribute("data-main-rotation", rotation);
+    const { pageWidth, pageHeight } = this.viewport.rawDims;
+    return [pageWidth, pageHeight];
   }
 }
 

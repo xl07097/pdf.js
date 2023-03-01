@@ -22,6 +22,7 @@ var path = require("path");
 var fs = require("fs");
 var os = require("os");
 var puppeteer = require("puppeteer");
+const rimraf = require("rimraf");
 var url = require("url");
 var testUtils = require("./testutils.js");
 const dns = require("dns");
@@ -854,9 +855,7 @@ function unitTestPostHandler(req, res) {
       var onCancel = null,
         ttxTimeout = 10000;
       var timeoutId = setTimeout(function () {
-        if (onCancel) {
-          onCancel("TTX timeout");
-        }
+        onCancel?.("TTX timeout");
       }, ttxTimeout);
       translateFont(
         body,
@@ -901,7 +900,7 @@ function unitTestPostHandler(req, res) {
 
 async function startBrowser(browserName, startUrl = "") {
   const revisions =
-    require("puppeteer/lib/cjs/puppeteer/revisions.js").PUPPETEER_REVISIONS;
+    require("puppeteer-core/lib/cjs/puppeteer/revisions.js").PUPPETEER_REVISIONS;
   const wantedRevision =
     browserName === "chrome" ? revisions.chromium : revisions.firefox;
 
@@ -1002,9 +1001,7 @@ function startBrowsers(initSessionCallback, makeStartUrl = null) {
     session.browserPromise = startBrowser(browserName, startUrl)
       .then(function (browser) {
         session.browser = browser;
-        if (initSessionCallback) {
-          initSessionCallback(session);
-        }
+        initSessionCallback?.(session);
       })
       .catch(function (ex) {
         console.log(`Error while starting ${browserName}: ${ex.message}`);
@@ -1027,9 +1024,7 @@ function stopServer() {
 }
 
 function getSession(browser) {
-  return sessions.filter(function (session) {
-    return session.name === browser;
-  })[0];
+  return sessions.find(session => session.name === browser);
 }
 
 async function closeSession(browser) {
@@ -1049,13 +1044,9 @@ async function closeSession(browser) {
     });
     if (allClosed) {
       if (tempDir) {
-        const rimraf = require("rimraf");
         rimraf.sync(tempDir);
       }
-
-      if (onAllSessionsClosed) {
-        onAllSessionsClosed();
-      }
+      onAllSessionsClosed?.();
     }
   }
 }

@@ -17,39 +17,47 @@
 
 :root {
   --dir-factor: 1;
+  /*#if MOZCENTRAL*/
+  --inline-start: inline-start;
+  --inline-end: inline-end;
+  /*#else*/
+  --inline-start: left;
+  --inline-end: right;
+  /*#endif*/
+
   --sidebar-width: 200px;
   --sidebar-transition-duration: 200ms;
   --sidebar-transition-timing-function: ease;
-  --scale-select-container-width: 140px;
-  --scale-select-overflow: 22px;
 
   --toolbar-icon-opacity: 0.7;
   --doorhanger-icon-opacity: 0.9;
 
   --main-color: rgba(12, 12, 13, 1);
-  --body-bg-color: rgba(237, 237, 240, 1);
-  /*#if !MOZCENTRAL*/
-  --errorWrapper-bg-color: rgba(255, 110, 110, 1);
-  /*#endif*/
-  --progressBar-percent: 0%;
-  --progressBar-end-offset: 0;
+  --body-bg-color: rgba(212, 212, 215, 1);
   --progressBar-color: rgba(10, 132, 255, 1);
-  --progressBar-indeterminate-bg-color: rgba(221, 221, 222, 1);
-  --progressBar-indeterminate-blend-color: rgba(116, 177, 239, 1);
+  --progressBar-bg-color: rgba(221, 221, 222, 1);
+  --progressBar-blend-color: rgba(116, 177, 239, 1);
   --scrollbar-color: auto;
   --scrollbar-bg-color: auto;
   --toolbar-icon-bg-color: rgba(0, 0, 0, 1);
   --toolbar-icon-hover-bg-color: rgba(0, 0, 0, 1);
 
-  --sidebar-narrow-bg-color: rgba(237, 237, 240, 0.9);
+  --sidebar-narrow-bg-color: rgba(212, 212, 215, 0.9);
   --sidebar-toolbar-bg-color: rgba(245, 246, 247, 1);
   --toolbar-bg-color: rgba(249, 249, 250, 1);
-  --toolbar-border-color: rgba(204, 204, 204, 1);
+  --toolbar-border-color: rgba(184, 184, 184, 1);
+  --toolbar-box-shadow: 0 1px 0 var(--toolbar-border-color);
+  --toolbar-border-bottom: none;
+  --toolbarSidebar-box-shadow: inset calc(-1px * var(--dir-factor)) 0 0
+      rgba(0, 0, 0, 0.25),
+    0 1px 0 rgba(0, 0, 0, 0.15), 0 0 1px rgba(0, 0, 0, 0.1);
+  --toolbarSidebar-border-bottom: none;
   --button-hover-color: rgba(221, 222, 223, 1);
   --toggled-btn-color: rgba(0, 0, 0, 1);
   --toggled-btn-bg-color: rgba(0, 0, 0, 0.3);
   --toggled-hover-active-btn-color: rgba(0, 0, 0, 0.4);
   --dropdown-btn-bg-color: rgba(215, 215, 219, 1);
+  --dropdown-btn-border: none;
   --separator-color: rgba(0, 0, 0, 0.3);
   --field-color: rgba(6, 6, 6, 1);
   --field-bg-color: rgba(255, 255, 255, 1);
@@ -64,14 +72,13 @@
   --doorhanger-hover-color: rgba(12, 12, 13, 1);
   --doorhanger-hover-bg-color: rgba(237, 237, 237, 1);
   --doorhanger-separator-color: rgba(222, 222, 222, 1);
-  --dialog-button-border: 0 none;
+  --dialog-button-border: none;
   --dialog-button-bg-color: rgba(12, 12, 13, 0.1);
   --dialog-button-hover-bg-color: rgba(12, 12, 13, 0.3);
 
   --loading-icon: url(images/loading.svg);
   --treeitem-expanded-icon: url(images/treeitem-expanded.svg);
   --treeitem-collapsed-icon: url(images/treeitem-collapsed.svg);
-  --toolbarButton-editorNone-icon: url(images/toolbarButton-editorNone.svg);
   --toolbarButton-editorFreeText-icon: url(images/toolbarButton-editorFreeText.svg);
   --toolbarButton-editorInk-icon: url(images/toolbarButton-editorInk.svg);
   --toolbarButton-menuArrow-icon: url(images/toolbarButton-menuArrow.svg);
@@ -114,18 +121,19 @@
 
 :root:dir(rtl) {
   --dir-factor: -1;
+  /*#if !MOZCENTRAL*/
+  --inline-start: right;
+  --inline-end: left;
+  /*#endif*/
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --main-color: rgba(249, 249, 250, 1);
     --body-bg-color: rgba(42, 42, 46, 1);
-    /*#if !MOZCENTRAL*/
-    --errorWrapper-bg-color: rgba(169, 14, 14, 1);
-    /*#endif*/
     --progressBar-color: rgba(0, 96, 223, 1);
-    --progressBar-indeterminate-bg-color: rgba(40, 40, 43, 1);
-    --progressBar-indeterminate-blend-color: rgba(20, 68, 133, 1);
+    --progressBar-bg-color: rgba(40, 40, 43, 1);
+    --progressBar-blend-color: rgba(20, 68, 133, 1);
     --scrollbar-color: rgba(121, 121, 123, 1);
     --scrollbar-bg-color: rgba(35, 35, 39, 1);
     --toolbar-icon-bg-color: rgba(255, 255, 255, 1);
@@ -171,6 +179,9 @@
     --toolbar-icon-opacity: 1;
     --toolbar-icon-bg-color: ButtonText;
     --toolbar-icon-hover-bg-color: ButtonFace;
+    --toolbar-border-color: CanvasText;
+    --toolbar-border-bottom: 1px solid var(--toolbar-border-color);
+    --toolbar-box-shadow: none;
     --toggled-btn-color: HighlightText;
     --toggled-btn-bg-color: LinkText;
     --doorhanger-hover-color: ButtonFace;
@@ -179,7 +190,19 @@
     --dialog-button-border: 1px solid Highlight;
     --dialog-button-hover-bg-color: Highlight;
     --dialog-button-hover-color: ButtonFace;
+    --dropdown-btn-border: 1px solid ButtonText;
     --field-border-color: ButtonText;
+    --main-color: CanvasText;
+    --separator-color: GrayText;
+    --doorhanger-separator-color: GrayText;
+    --toolbarSidebar-box-shadow: none;
+    --toolbarSidebar-border-bottom: 1px solid var(--toolbar-border-color);
+  }
+}
+
+@media screen and (prefers-reduced-motion: reduce) {
+  :root {
+    --sidebar-transition-duration: 0;
   }
 }
 
@@ -196,14 +219,6 @@ body {
 
 body {
   background-color: var(--body-bg-color);
-}
-
-body,
-input,
-button,
-select {
-  font: message-box;
-  outline: none;
   scrollbar-color: var(--scrollbar-color) var(--scrollbar-bg-color);
 }
 
@@ -222,8 +237,8 @@ select {
   user-select: none;
 }
 
-.pdfPresentationMode:fullscreen a:not(.internalLink) {
-  display: none;
+.pdfPresentationMode:fullscreen section:not([data-internal-link]) {
+  pointer-events: none;
 }
 
 .pdfPresentationMode:fullscreen .textLayer span {
@@ -249,6 +264,7 @@ select {
   width: var(--sidebar-width);
   visibility: hidden;
   z-index: 100;
+  font: message-box;
   border-top: 1px solid rgba(51, 51, 51, 1);
   border-inline-end: var(--doorhanger-border-color-whcm);
   transition-property: inset-inline-start;
@@ -280,7 +296,6 @@ select {
   overflow: auto;
   position: absolute;
   width: 100%;
-  background-color: rgba(0, 0, 0, 0.1);
   box-shadow: inset calc(-1px * var(--dir-factor)) 0 0 rgba(0, 0, 0, 0.25);
 }
 
@@ -309,6 +324,27 @@ select {
   right: 0;
   z-index: 9999;
   cursor: default;
+  font: message-box;
+}
+
+.toolbar input,
+.toolbar button,
+.toolbar select,
+.secondaryToolbar input,
+.secondaryToolbar button,
+.secondaryToolbar a,
+.secondaryToolbar select,
+.editorParamsToolbar input,
+.editorParamsToolbar button,
+.editorParamsToolbar select,
+.findbar input,
+.findbar button,
+.findbar select,
+#sidebarContainer input,
+#sidebarContainer button,
+#sidebarContainer select {
+  outline: none;
+  font: message-box;
 }
 
 #toolbarContainer {
@@ -319,8 +355,8 @@ select {
   width: 100%;
   height: 32px;
   background-color: var(--sidebar-toolbar-bg-color);
-  box-shadow: inset calc(-1px * var(--dir-factor)) 0 0 rgba(0, 0, 0, 0.25),
-    0 1px 0 rgba(0, 0, 0, 0.15), 0 0 1px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--toolbarSidebar-box-shadow);
+  border-bottom: var(--toolbarSidebar-border-bottom);
 }
 
 #sidebarResizer {
@@ -340,7 +376,8 @@ select {
   position: relative;
   height: 32px;
   background-color: var(--toolbar-bg-color);
-  box-shadow: 0 1px 0 var(--toolbar-border-color);
+  box-shadow: var(--toolbar-box-shadow);
+  border-bottom: var(--toolbar-border-bottom);
 }
 
 #toolbarViewer {
@@ -348,10 +385,15 @@ select {
 }
 
 #loadingBar {
+  /* Define these variables here, and not in :root, to avoid reflowing the
+     entire viewer when updating progress (see issue 15958). */
+  --progressBar-percent: 0%;
+  --progressBar-end-offset: 0;
+
   position: absolute;
   inset-inline: 0 var(--progressBar-end-offset);
   height: 4px;
-  background-color: var(--body-bg-color);
+  background-color: var(--progressBar-bg-color);
   border-bottom: 1px solid var(--toolbar-border-color);
   transition-property: inset-inline-start;
   transition-duration: var(--sidebar-transition-duration);
@@ -386,7 +428,7 @@ select {
 
 #loadingBar.indeterminate .progress {
   transform: none;
-  background-color: var(--progressBar-indeterminate-bg-color);
+  background-color: var(--progressBar-bg-color);
   transition: none;
 }
 
@@ -398,12 +440,12 @@ select {
   width: calc(100% + 150px);
   background: repeating-linear-gradient(
     135deg,
-    var(--progressBar-indeterminate-blend-color) 0,
-    var(--progressBar-indeterminate-bg-color) 5px,
-    var(--progressBar-indeterminate-bg-color) 45px,
+    var(--progressBar-blend-color) 0,
+    var(--progressBar-bg-color) 5px,
+    var(--progressBar-bg-color) 45px,
     var(--progressBar-color) 55px,
     var(--progressBar-color) 95px,
-    var(--progressBar-indeterminate-blend-color) 100px
+    var(--progressBar-blend-color) 100px
   );
   animation: progressIndeterminate 1s linear infinite;
 }
@@ -420,11 +462,11 @@ select {
 .editorParamsToolbar {
   top: 32px;
   position: absolute;
-  z-index: 10000;
+  z-index: 30000;
   height: auto;
   padding: 0 4px;
   margin: 4px 2px;
-  color: rgba(217, 217, 217, 1);
+  font: message-box;
   font-size: 12px;
   line-height: 14px;
   text-align: left;
@@ -494,7 +536,6 @@ select {
   padding: 6px 0 10px;
   inset-inline-end: 4px;
   height: auto;
-  z-index: 30000;
   background-color: var(--doorhanger-bg-color);
 }
 
@@ -532,13 +573,18 @@ select {
 .editorParamsToolbarContainer .editorParamsSlider::-moz-range-progress {
   background-color: black;
 }
-.editorParamsToolbarContainer .editorParamsSlider::-moz-range-track,
-.editorParamsToolbarContainer
-  .editorParamsSlider::-webkit-slider-runnable-track {
+
+/*#if !MOZCENTRAL*/
+.editorParamsToolbarContainer .editorParamsSlider::-webkit-slider-runnable-track,
+/*#endif*/
+.editorParamsToolbarContainer .editorParamsSlider::-moz-range-track {
   background-color: black;
 }
-.editorParamsToolbarContainer .editorParamsSlider::-moz-range-thumb,
-.editorParamsToolbarContainer .editorParamsSlider::-webkit-slider-thumb {
+
+/*#if !MOZCENTRAL*/
+.editorParamsToolbarContainer .editorParamsSlider::-webkit-slider-thumb,
+/*#endif*/
+.editorParamsToolbarContainer .editorParamsSlider::-moz-range-thumb {
   background-color: white;
 }
 
@@ -629,11 +675,11 @@ select {
 
 #toolbarViewerLeft,
 #toolbarSidebarLeft {
-  float: inline-start;
+  float: var(--inline-start);
 }
 #toolbarViewerRight,
 #toolbarSidebarRight {
-  float: inline-end;
+  float: var(--inline-end);
 }
 
 #toolbarViewerLeft > *,
@@ -643,7 +689,7 @@ select {
 #toolbarSidebarRight *,
 .findbar * {
   position: relative;
-  float: inline-start;
+  float: var(--inline-start);
 }
 
 #toolbarViewerLeft {
@@ -661,16 +707,17 @@ select {
   display: inline-block;
 }
 .splitToolbarButton > .toolbarButton {
-  float: inline-start;
+  float: var(--inline-start);
 }
 
 .toolbarButton,
 .secondaryToolbarButton,
 .dialogButton {
-  border: 0 none;
+  border: none;
   background: none;
   width: 28px;
   height: 28px;
+  outline: none;
 }
 
 .dialogButton:hover,
@@ -710,7 +757,7 @@ select {
 }
 
 .splitToolbarButtonSeparator {
-  float: inline-start;
+  float: var(--inline-start);
   margin: 4px 0;
   width: 1px;
   height: 20px;
@@ -763,28 +810,31 @@ select {
 }
 
 .dropdownToolbarButton {
-  width: var(--scale-select-container-width);
+  /* Define this variable here, and not in :root, to avoid reflowing the
+     entire viewer when updating the width. */
+  --scale-select-width: 140px;
+
+  width: var(--scale-select-width);
   padding: 0;
-  overflow: hidden;
   background-color: var(--dropdown-btn-bg-color);
+  border: var(--dropdown-btn-border);
 }
 .dropdownToolbarButton::after {
   top: 6px;
-  inset-inline-end: 7px;
+  inset-inline-end: 6px;
   pointer-events: none;
   mask-image: var(--toolbarButton-menuArrow-icon);
 }
 
 .dropdownToolbarButton > select {
-  width: calc(
-    var(--scale-select-container-width) + var(--scale-select-overflow)
-  );
+  appearance: none;
+  width: inherit;
   height: 28px;
   font-size: 12px;
   color: var(--main-color);
   margin: 0;
   padding: 1px 0 2px;
-  padding-inline-start: 4px;
+  padding-inline-start: 6px;
   border: none;
   background-color: var(--dropdown-btn-bg-color);
 }
@@ -879,13 +929,8 @@ select {
   mask-image: var(--toolbarButton-zoomIn-icon);
 }
 
-#presentationMode::before,
-#secondaryPresentationMode::before {
+#presentationMode::before {
   mask-image: var(--toolbarButton-presentationMode-icon);
-}
-
-#editorNone::before {
-  mask-image: var(--toolbarButton-editorNone-icon);
 }
 
 #editorFreeText::before {
@@ -914,7 +959,7 @@ select {
 }
 
 a.secondaryToolbarButton {
-  padding-top: 6px;
+  padding-top: 5px;
   text-decoration: none;
 }
 a.toolbarButton[href="#"],
@@ -923,8 +968,7 @@ a.secondaryToolbarButton[href="#"] {
   pointer-events: none;
 }
 
-#viewBookmark::before,
-#secondaryViewBookmark::before {
+#viewBookmark::before {
   mask-image: var(--toolbarButton-bookmark-icon);
 }
 
@@ -957,8 +1001,8 @@ a.secondaryToolbarButton[href="#"] {
 .pdfSidebarNotification::after {
   position: absolute;
   display: inline-block;
-  top: 1px;
-  inset-inline-start: 17px;
+  top: 2px;
+  inset-inline-end: 2px;
   /* Create a filled circle, with a diameter of 9 pixels, using only CSS: */
   content: "";
   background-color: rgba(112, 219, 85, 1);
@@ -980,6 +1024,7 @@ a.secondaryToolbarButton[href="#"] {
   white-space: normal;
   border-radius: 0;
   box-sizing: border-box;
+  display: inline-block;
 }
 .secondaryToolbarButton > span {
   padding-inline-end: 4px;
@@ -1067,7 +1112,7 @@ a.secondaryToolbarButton[href="#"] {
   color: var(--field-color);
   font-size: 12px;
   line-height: 16px;
-  outline-style: none;
+  outline: none;
 }
 
 .toolbarField[type="checkbox"] {
@@ -1082,11 +1127,18 @@ a.secondaryToolbarButton[href="#"] {
   -moz-appearance: textfield; /* hides the spinner in moz */
   text-align: right;
   width: 40px;
+  background-size: 0 0;
+  transition-property: none;
 }
 #pageNumber.visiblePageIsLoading {
   background-image: var(--loading-icon);
   background-repeat: no-repeat;
   background-position: 3px;
+  background-size: 16px 16px;
+  /* Using a delay with background-image doesn't work,
+     consequently we use background-size. */
+  transition-property: background-size;
+  transition-delay: var(--loading-icon-delay);
 }
 /*#if !MOZCENTRAL*/
 #pageNumber::-webkit-inner-spin-button {
@@ -1138,7 +1190,7 @@ a.secondaryToolbarButton[href="#"] {
 }
 
 .thumbnail {
-  float: inline-start;
+  float: var(--inline-start);
   margin: 0 10px 5px;
 }
 
@@ -1220,13 +1272,13 @@ a:focus > .thumbnail > .thumbnailSelectionRing,
   padding-inline-start: 4px;
 }
 #layersView .treeItem > a > label > input {
-  float: inline-start;
+  float: var(--inline-start);
   margin-top: 1px;
 }
 
 .treeItemToggler {
   position: relative;
-  float: inline-start;
+  float: var(--inline-start);
   height: 0;
   width: 0;
   color: rgba(255, 255, 255, 0.5);
@@ -1258,44 +1310,6 @@ a:focus > .thumbnail > .thumbnailSelectionRing,
   color: var(--treeitem-hover-color);
 }
 
-/* TODO: file FF bug to support ::-moz-selection:window-inactive
-   so we can override the opaque grey background when the window is inactive;
-   see https://bugzilla.mozilla.org/show_bug.cgi?id=706209 */
-::selection {
-  background: rgba(0, 0, 255, 0.3);
-}
-
-/*#if !MOZCENTRAL*/
-#errorWrapper {
-  background-color: var(--errorWrapper-bg-color);
-  color: var(--main-color);
-  left: 0;
-  position: absolute;
-  right: 0;
-  z-index: 1000;
-  padding: 3px 6px;
-}
-
-#errorMessageLeft {
-  float: left;
-}
-#errorMessageRight {
-  float: right;
-}
-
-#errorSpacer {
-  clear: both;
-}
-#errorMoreInfo {
-  background-color: var(--field-bg-color);
-  color: var(--field-color);
-  border: 1px solid var(--field-border-color);
-  padding: 3px;
-  margin: 3px;
-  width: 98%;
-}
-/*#endif*/
-
 .dialogButton {
   width: auto;
   margin: 3px 4px 2px !important;
@@ -1310,6 +1324,7 @@ dialog {
   padding: 15px;
   border-spacing: 4px;
   color: var(--main-color);
+  font: message-box;
   font-size: 12px;
   line-height: 14px;
   background-color: var(--doorhanger-bg-color);
@@ -1457,8 +1472,7 @@ dialog :link {
 }
 
 .visibleLargeView,
-.visibleMediumView,
-.visibleSmallView {
+.visibleMediumView {
   display: none;
 }
 
@@ -1503,9 +1517,6 @@ dialog :link {
   .hiddenSmallView,
   .hiddenSmallView * {
     display: none;
-  }
-  .visibleSmallView {
-    display: inherit;
   }
   .toolbarButtonSpacer {
     width: 0;

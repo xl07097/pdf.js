@@ -14,7 +14,6 @@
  */
 
 /** @typedef {import("../src/display/api").PDFDocumentProxy} PDFDocumentProxy */
-/** @typedef {import("./event_utils").EventBus} EventBus */
 /** @typedef {import("./interfaces").IL10n} IL10n */
 /** @typedef {import("./interfaces").IPDFLinkService} IPDFLinkService */
 // eslint-disable-next-line max-len
@@ -36,7 +35,6 @@ const THUMBNAIL_SELECTED_CLASS = "selected";
  * @typedef {Object} PDFThumbnailViewerOptions
  * @property {HTMLDivElement} container - The container for the thumbnail
  *   elements.
- * @property {EventBus} eventBus - The application event bus.
  * @property {IPDFLinkService} linkService - The navigation/linking service.
  * @property {PDFRenderingQueue} renderingQueue - The rendering queue object.
  * @property {IL10n} l10n - Localization service.
@@ -52,14 +50,7 @@ class PDFThumbnailViewer {
   /**
    * @param {PDFThumbnailViewerOptions} options
    */
-  constructor({
-    container,
-    eventBus,
-    linkService,
-    renderingQueue,
-    l10n,
-    pageColors,
-  }) {
+  constructor({ container, linkService, renderingQueue, l10n, pageColors }) {
     this.container = container;
     this.linkService = linkService;
     this.renderingQueue = renderingQueue;
@@ -85,12 +76,6 @@ class PDFThumbnailViewer {
 
     this.scroll = watchScroll(this.container, this._scrollUpdated.bind(this));
     this._resetView();
-
-    eventBus._on("optionalcontentconfigchanged", () => {
-      // Ensure that the thumbnails always render with the *default* optional
-      // content configuration.
-      this._setImageDisabled = true;
-    });
   }
 
   /**
@@ -195,8 +180,6 @@ class PDFThumbnailViewer {
     this._currentPageNumber = 1;
     this._pageLabels = null;
     this._pagesRotation = 0;
-    this._optionalContentConfigPromise = null;
-    this._setImageDisabled = false;
 
     // Remove the thumbnails from the DOM.
     this.container.textContent = "";
@@ -220,13 +203,8 @@ class PDFThumbnailViewer {
 
     firstPagePromise
       .then(firstPdfPage => {
-        this._optionalContentConfigPromise = optionalContentConfigPromise;
-
         const pagesCount = pdfDocument.numPages;
         const viewport = firstPdfPage.getViewport({ scale: 1 });
-        const checkSetImageDisabled = () => {
-          return this._setImageDisabled;
-        };
 
         for (let pageNum = 1; pageNum <= pagesCount; ++pageNum) {
           const thumbnail = new PDFThumbnailView({
@@ -236,7 +214,6 @@ class PDFThumbnailViewer {
             optionalContentConfigPromise,
             linkService: this.linkService,
             renderingQueue: this.renderingQueue,
-            checkSetImageDisabled,
             l10n: this.l10n,
             pageColors: this.pageColors,
           });
@@ -245,10 +222,7 @@ class PDFThumbnailViewer {
         // Set the first `pdfPage` immediately, since it's already loaded,
         // rather than having to repeat the `PDFDocumentProxy.getPage` call in
         // the `this.#ensurePdfPageLoaded` method before rendering can start.
-        const firstThumbnailView = this._thumbnails[0];
-        if (firstThumbnailView) {
-          firstThumbnailView.setPdfPage(firstPdfPage);
-        }
+        this._thumbnails[0]?.setPdfPage(firstPdfPage);
 
         // Ensure that the current thumbnail is always highlighted on load.
         const thumbnailView = this._thumbnails[this._currentPageNumber - 1];

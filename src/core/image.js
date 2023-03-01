@@ -13,14 +13,7 @@
  * limitations under the License.
  */
 
-import {
-  assert,
-  FeatureTest,
-  FormatError,
-  ImageKind,
-  info,
-  warn,
-} from "../shared/util.js";
+import { assert, FormatError, ImageKind, info, warn } from "../shared/util.js";
 import { applyMaskImageData } from "../shared/image_utils.js";
 import { BaseStream } from "./base_stream.js";
 import { ColorSpace } from "./colorspace.js";
@@ -103,25 +96,31 @@ class PDFImage {
     const dict = image.dict;
 
     const filter = dict.get("F", "Filter");
+    let filterName;
     if (filter instanceof Name) {
-      switch (filter.name) {
-        case "JPXDecode":
-          const jpxImage = new JpxImage();
-          jpxImage.parseImageProperties(image.stream);
-          image.stream.reset();
-
-          image.width = jpxImage.width;
-          image.height = jpxImage.height;
-          image.bitsPerComponent = jpxImage.bitsPerComponent;
-          image.numComps = jpxImage.componentsCount;
-          break;
-        case "JBIG2Decode":
-          image.bitsPerComponent = 1;
-          image.numComps = 1;
-          break;
+      filterName = filter.name;
+    } else if (Array.isArray(filter)) {
+      const filterZero = xref.fetchIfRef(filter[0]);
+      if (filterZero instanceof Name) {
+        filterName = filterZero.name;
       }
     }
-    // TODO cache rendered images?
+    switch (filterName) {
+      case "JPXDecode":
+        const jpxImage = new JpxImage();
+        jpxImage.parseImageProperties(image.stream);
+        image.stream.reset();
+
+        image.width = jpxImage.width;
+        image.height = jpxImage.height;
+        image.bitsPerComponent = jpxImage.bitsPerComponent;
+        image.numComps = jpxImage.componentsCount;
+        break;
+      case "JBIG2Decode":
+        image.bitsPerComponent = 1;
+        image.numComps = 1;
+        break;
+    }
 
     let width = dict.get("W", "Width");
     let height = dict.get("H", "Height");
@@ -350,6 +349,7 @@ class PDFImage {
     imageIsFromDecodeStream,
     inverseDecode,
     interpolate,
+    isOffscreenCanvasSupported = false,
   }) {
     const isSingleOpaquePixel =
       width === 1 &&
@@ -360,7 +360,7 @@ class PDFImage {
       return { isSingleOpaquePixel };
     }
 
-    if (FeatureTest.isOffscreenCanvasSupported) {
+    if (isOffscreenCanvasSupported) {
       const canvas = new OffscreenCanvas(width, height);
       const ctx = canvas.getContext("2d");
       const imgData = ctx.createImageData(width, height);

@@ -38,13 +38,6 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       compatibilityParams.maxCanvasPixels = 5242880;
     }
   })();
-
-  // Support: Safari<13.1
-  (function checkResizeObserver() {
-    if (typeof ResizeObserver === "undefined") {
-      compatibilityParams.annotationEditorMode = -1;
-    }
-  })();
 }
 
 const OptionKind = {
@@ -61,11 +54,8 @@ const OptionKind = {
  */
 const defaultOptions = {
   annotationEditorMode: {
-    /** @type {boolean} */
-    value:
-      typeof PDFJSDev === "undefined" || PDFJSDev.test("!PRODUCTION || TESTING")
-        ? 0
-        : -1,
+    /** @type {number} */
+    value: 0,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
   annotationMode: {
@@ -76,6 +66,11 @@ const defaultOptions = {
   cursorToolOnLoad: {
     /** @type {number} */
     value: 0,
+    kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
+  },
+  defaultZoomDelay: {
+    /** @type {number} */
+    value: 400,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
   defaultZoomValue: {
@@ -252,6 +247,11 @@ const defaultOptions = {
     value: true,
     kind: OptionKind.API,
   },
+  isOffscreenCanvasSupported: {
+    /** @type {boolean} */
+    value: true,
+    kind: OptionKind.API,
+  },
   maxImageSize: {
     /** @type {number} */
     value: -1,
@@ -404,13 +404,12 @@ class AppOptions {
   static remove(name) {
     delete userOptions[name];
   }
+}
 
-  /**
-   * @ignore
-   */
-  static _hasUserOptions() {
+if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
+  AppOptions._hasUserOptions = function () {
     return Object.keys(userOptions).length > 0;
-  }
+  };
 }
 
 export { AppOptions, compatibilityParams, OptionKind };

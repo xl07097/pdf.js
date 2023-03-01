@@ -13,6 +13,10 @@
  * limitations under the License.
  */
 
+import { USERACTIVATION_CALLBACKID } from "./doc.js";
+
+const USERACTIVATION_MAXTIME_VALIDITY = 5000;
+
 class Event {
   constructor(data) {
     this.change = data.change || "";
@@ -39,10 +43,11 @@ class Event {
 }
 
 class EventDispatcher {
-  constructor(document, calculationOrder, objects) {
+  constructor(document, calculationOrder, objects, externalCall) {
     this._document = document;
     this._calculationOrder = calculationOrder;
     this._objects = objects;
+    this._externalCall = externalCall;
 
     this._document.obj._eventDispatcher = this;
     this._isCalculating = false;
@@ -66,6 +71,14 @@ class EventDispatcher {
     return `${prefix}${event.change}${postfix}`;
   }
 
+  userActivation() {
+    this._document.obj._userActivation = true;
+    this._externalCall("setTimeout", [
+      USERACTIVATION_CALLBACKID,
+      USERACTIVATION_MAXTIME_VALIDITY,
+    ]);
+  }
+
   dispatch(baseEvent) {
     const id = baseEvent.id;
     if (!(id in this._objects)) {
@@ -76,24 +89,37 @@ class EventDispatcher {
         event.name = baseEvent.name;
       }
       if (id === "doc") {
-        if (event.name === "Open") {
+        const eventName = event.name;
+        if (eventName === "Open") {
+          // The user has decided to open this pdf, hence we enable
+          // userActivation.
+          this.userActivation();
+          // Initialize named actions before calling formatAll to avoid any
+          // errors in the case where a formatter is using one of those named
+          // actions (see #15818).
+          this._document.obj._initActions();
           // Before running the Open event, we format all the fields
           // (see bug 1766987).
           this.formatAll();
         }
+        if (
+          !["DidPrint", "DidSave", "WillPrint", "WillSave"].includes(eventName)
+        ) {
+          this.userActivation();
+        }
         this._document.obj._dispatchDocEvent(event.name);
       } else if (id === "page") {
+        this.userActivation();
         this._document.obj._dispatchPageEvent(
           event.name,
           baseEvent.actions,
           baseEvent.pageNumber
         );
       } else if (id === "app" && baseEvent.name === "ResetForm") {
+        this.userActivation();
         for (const fieldId of baseEvent.ids) {
           const obj = this._objects[fieldId];
-          if (obj) {
-            obj.obj._reset();
-          }
+          obj?.obj._reset();
         }
       }
       return;
@@ -103,6 +129,8 @@ class EventDispatcher {
     const source = this._objects[id];
     const event = (globalThis.event = new Event(baseEvent));
     let savedChange;
+
+    this.userActivation();
 
     if (source.obj._isButton()) {
       source.obj._id = id;
@@ -116,6 +144,7 @@ class EventDispatcher {
       case "Keystroke":
         savedChange = {
           value: event.value,
+          changeEx: event.changeEx,
           change: event.change,
           selStart: event.selStart,
           selEnd: event.selEnd,
@@ -149,6 +178,16 @@ class EventDispatcher {
       if (event.willCommit) {
         this.runValidation(source, event);
       } else {
+        if (source.obj._isChoice) {
+          source.obj.value = savedChange.changeEx;
+          source.obj._send({
+            id: source.obj._id,
+            siblings: source.obj._siblings,
+            value: source.obj.value,
+          });
+          return;
+        }
+
         const value = (source.obj.value = this.mergeChange(event));
         let selStart, selEnd;
         if (
@@ -210,7 +249,8 @@ class EventDispatcher {
 
       this.runCalculate(source, event);
 
-      const savedValue = (event.value = source.obj.value);
+      const savedValue = source.obj._getValue();
+      event.value = source.obj.value;
       let formattedValue = null;
 
       if (this.runActions(source, source, event, "Format")) {
@@ -232,6 +272,7 @@ class EventDispatcher {
         value: "",
         formattedValue: null,
         selRange: [0, 0],
+        focus: true, // Stay in the field.
       });
     }
   }

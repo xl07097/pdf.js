@@ -28,6 +28,12 @@
       ],
       "default": 0
     },
+    "defaultZoomDelay": {
+      "title": "Default zoom delay",
+      "description": "Delay (in ms) to wait before redrawing the canvas.",
+      "type": "integer",
+      "default": 400
+    },
     "defaultZoomValue": {
       "title": "Default zoom level",
       "description": "Default zoom level of the viewer. Accepted values: 'auto', 'page-actual', 'page-width', 'page-height', 'page-fit', or a zoom level in percents.",
@@ -102,19 +108,13 @@
       "type": "boolean",
       "default": false
     },
-    "enhanceTextSelection": {
-      "description": "DEPRECATED. Set textLayerMode to 2 to use the enhanced text selection layer by default.",
-      "type": "boolean",
-      "default": false
-    },
     "textLayerMode": {
       "title": "Text layer mode",
-      "description": "Controls if the text layer is enabled, and the selection mode that is used.\n 0 = Disabled.\n 1 = Enabled.\n 2 = (Experimental) Enabled, with enhanced text selection.",
+      "description": "Controls if the text layer is enabled, and the selection mode that is used.\n 0 = Disabled.\n 1 = Enabled.",
       "type": "integer",
       "enum": [
         0,
-        1,
-        2
+        1
       ],
       "default": 1
     },
@@ -162,7 +162,13 @@
     },
     "annotationEditorMode": {
       "type": "integer",
-      "default": -1
+      "enum": [
+        -1,
+        0,
+        3,
+        15
+      ],
+      "default": 0
     },
     "enablePermissions": {
       "type": "boolean",

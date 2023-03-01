@@ -13,12 +13,8 @@
  * limitations under the License.
  */
 
-import {
-  arrayByteLength,
-  arraysToBytes,
-  createPromiseCapability,
-} from "../shared/util.js";
-import { MissingDataException } from "./core_utils.js";
+import { arrayBuffersToBytes, MissingDataException } from "./core_utils.js";
+import { assert, createPromiseCapability } from "../shared/util.js";
 import { Stream } from "./stream.js";
 
 class ChunkedStream extends Stream {
@@ -282,10 +278,6 @@ class ChunkedStreamManager {
     this._loadedStreamCapability = createPromiseCapability();
   }
 
-  onLoadedStream() {
-    return this._loadedStreamCapability.promise;
-  }
-
   sendRequest(begin, end) {
     const rangeReader = this.pdfNetworkStream.getRangeReader(begin, end);
     if (!rangeReader.isStreamingSupported) {
@@ -295,21 +287,31 @@ class ChunkedStreamManager {
     let chunks = [],
       loaded = 0;
     return new Promise((resolve, reject) => {
-      const readChunk = chunk => {
+      const readChunk = ({ value, done }) => {
         try {
-          if (!chunk.done) {
-            const data = chunk.value;
-            chunks.push(data);
-            loaded += arrayByteLength(data);
-            if (rangeReader.isStreamingSupported) {
-              this.onProgress({ loaded });
-            }
-            rangeReader.read().then(readChunk, reject);
+          if (done) {
+            const chunkData = arrayBuffersToBytes(chunks);
+            chunks = null;
+            resolve(chunkData);
             return;
           }
-          const chunkData = arraysToBytes(chunks);
-          chunks = null;
-          resolve(chunkData);
+          if (
+            typeof PDFJSDev === "undefined" ||
+            PDFJSDev.test("!PRODUCTION || TESTING")
+          ) {
+            assert(
+              value instanceof ArrayBuffer,
+              "readChunk (sendRequest) - expected an ArrayBuffer."
+            );
+          }
+          loaded += value.byteLength;
+
+          if (rangeReader.isStreamingSupported) {
+            this.onProgress({ loaded });
+          }
+
+          chunks.push(value);
+          rangeReader.read().then(readChunk, reject);
         } catch (e) {
           reject(e);
         }
@@ -327,9 +329,11 @@ class ChunkedStreamManager {
    * Get all the chunks that are not yet loaded and group them into
    * contiguous ranges to load in as few requests as possible.
    */
-  requestAllChunks() {
-    const missingChunks = this.stream.getMissingChunks();
-    this._requestChunks(missingChunks);
+  requestAllChunks(noFetch = false) {
+    if (!noFetch) {
+      const missingChunks = this.stream.getMissingChunks();
+      this._requestChunks(missingChunks);
+    }
     return this._loadedStreamCapability.promise;
   }
 

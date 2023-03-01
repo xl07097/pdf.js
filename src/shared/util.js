@@ -13,7 +13,15 @@
  * limitations under the License.
  */
 
-import "./compatibility.js";
+// Skip compatibility checks for modern builds and if we already ran the module.
+if (
+  typeof PDFJSDev !== "undefined" &&
+  !PDFJSDev.test("SKIP_BABEL") &&
+  !globalThis._pdfjsCompatibilityChecked
+) {
+  globalThis._pdfjsCompatibilityChecked = true;
+  require("./compatibility.js");
+}
 
 const IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0];
 const FONT_IDENTITY_MATRIX = [0.001, 0, 0, 0.001, 0, 0];
@@ -22,6 +30,7 @@ const FONT_IDENTITY_MATRIX = [0.001, 0, 0, 0.001, 0, 0];
 // the font size. Acrobat seems to use this value.
 const LINE_FACTOR = 1.35;
 const LINE_DESCENT_FACTOR = 0.35;
+const BASELINE_FACTOR = LINE_DESCENT_FACTOR / LINE_FACTOR;
 
 /**
  * Refer to the `WorkerTransport.getRenderingIntent`-method in the API, to see
@@ -39,6 +48,7 @@ const RenderingIntentFlag = {
   ANY: 0x01,
   DISPLAY: 0x02,
   PRINT: 0x04,
+  SAVE: 0x08,
   ANNOTATIONS_FORMS: 0x10,
   ANNOTATIONS_STORAGE: 0x20,
   ANNOTATIONS_DISABLE: 0x40,
@@ -62,10 +72,12 @@ const AnnotationEditorType = {
 };
 
 const AnnotationEditorParamsType = {
-  FREETEXT_SIZE: 0,
-  FREETEXT_COLOR: 1,
-  INK_COLOR: 2,
-  INK_THICKNESS: 3,
+  FREETEXT_SIZE: 1,
+  FREETEXT_COLOR: 2,
+  FREETEXT_OPACITY: 3,
+  INK_COLOR: 11,
+  INK_THICKNESS: 12,
+  INK_OPACITY: 13,
 };
 
 // Permission flags from Table 22, Section 7.6.3.2 of the PDF specification.
@@ -224,34 +236,6 @@ const PageActionEventType = {
   C: "PageClose",
 };
 
-const StreamType = {
-  UNKNOWN: "UNKNOWN",
-  FLATE: "FLATE",
-  LZW: "LZW",
-  DCT: "DCT",
-  JPX: "JPX",
-  JBIG: "JBIG",
-  A85: "A85",
-  AHX: "AHX",
-  CCF: "CCF",
-  RLX: "RLX", // PDF short name is 'RL', but telemetry requires three chars.
-};
-
-const FontType = {
-  UNKNOWN: "UNKNOWN",
-  TYPE1: "TYPE1",
-  TYPE1STANDARD: "TYPE1STANDARD",
-  TYPE1C: "TYPE1C",
-  CIDFONTTYPE0: "CIDFONTTYPE0",
-  CIDFONTTYPE0C: "CIDFONTTYPE0C",
-  TRUETYPE: "TRUETYPE",
-  CIDFONTTYPE2: "CIDFONTTYPE2",
-  TYPE3: "TYPE3",
-  OPENTYPE: "OPENTYPE",
-  TYPE0: "TYPE0",
-  MMTYPE1: "MMTYPE1",
-};
-
 const VerbosityLevel = {
   ERRORS: 0,
   WARNINGS: 1,
@@ -261,13 +245,14 @@ const VerbosityLevel = {
 const CMapCompressionType = {
   NONE: 0,
   BINARY: 1,
-  STREAM: 2,
 };
 
 // All the possible operations for an operator list.
 const OPS = {
   // Intentionally start from 1 so it is easy to spot bad operators that will be
   // 0's.
+  // PLEASE NOTE: We purposely keep any removed operators commented out, since
+  //              re-numbering the list would risk breaking third-party users.
   dependency: 1,
   setLineWidth: 2,
   setLineCap: 3,
@@ -345,14 +330,11 @@ const OPS = {
   paintFormXObjectEnd: 75,
   beginGroup: 76,
   endGroup: 77,
-  /** @deprecated unused */
-  beginAnnotations: 78,
-  /** @deprecated unused */
-  endAnnotations: 79,
+  // beginAnnotations: 78,
+  // endAnnotations: 79,
   beginAnnotation: 80,
   endAnnotation: 81,
-  /** @deprecated unused */
-  paintJpegXObject: 82,
+  // paintJpegXObject: 82,
   paintImageMaskXObject: 83,
   paintImageMaskXObjectGroup: 84,
   paintImageXObject: 85,
@@ -364,32 +346,31 @@ const OPS = {
   constructPath: 91,
 };
 
-const UNSUPPORTED_FEATURES = {
-  /** @deprecated unused */
-  unknown: "unknown",
-  forms: "forms",
-  javaScript: "javaScript",
-  signatures: "signatures",
-  smask: "smask",
-  shadingPattern: "shadingPattern",
-  /** @deprecated unused */
-  font: "font",
-  errorTilingPattern: "errorTilingPattern",
-  errorExtGState: "errorExtGState",
-  errorXObject: "errorXObject",
-  errorFontLoadType3: "errorFontLoadType3",
-  errorFontState: "errorFontState",
-  errorFontMissing: "errorFontMissing",
-  errorFontTranslate: "errorFontTranslate",
-  errorColorSpace: "errorColorSpace",
-  errorOperatorList: "errorOperatorList",
-  errorFontToUnicode: "errorFontToUnicode",
-  errorFontLoadNative: "errorFontLoadNative",
-  errorFontBuildPath: "errorFontBuildPath",
-  errorFontGetPath: "errorFontGetPath",
-  errorMarkedContent: "errorMarkedContent",
-  errorContentSubStream: "errorContentSubStream",
-};
+const UNSUPPORTED_FEATURES =
+  typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")
+    ? {
+        forms: "forms",
+        javaScript: "javaScript",
+        signatures: "signatures",
+        smask: "smask",
+        shadingPattern: "shadingPattern",
+        errorTilingPattern: "errorTilingPattern",
+        errorExtGState: "errorExtGState",
+        errorXObject: "errorXObject",
+        errorFontLoadType3: "errorFontLoadType3",
+        errorFontState: "errorFontState",
+        errorFontMissing: "errorFontMissing",
+        errorFontTranslate: "errorFontTranslate",
+        errorColorSpace: "errorColorSpace",
+        errorOperatorList: "errorOperatorList",
+        errorFontToUnicode: "errorFontToUnicode",
+        errorFontLoadNative: "errorFontLoadNative",
+        errorFontBuildPath: "errorFontBuildPath",
+        errorFontGetPath: "errorFontGetPath",
+        errorMarkedContent: "errorMarkedContent",
+        errorContentSubStream: "errorContentSubStream",
+      }
+    : null;
 
 const PasswordResponses = {
   NEED_PASSWORD: 1,
@@ -494,7 +475,7 @@ function createValidAbsoluteUrl(url, baseUrl = null, options = null) {
   return null;
 }
 
-function shadow(obj, prop, value) {
+function shadow(obj, prop, value, nonSerializable = false) {
   if (
     typeof PDFJSDev === "undefined" ||
     PDFJSDev.test("!PRODUCTION || TESTING")
@@ -506,7 +487,7 @@ function shadow(obj, prop, value) {
   }
   Object.defineProperty(obj, prop, {
     value,
-    enumerable: true,
+    enumerable: !nonSerializable,
     configurable: true,
     writable: false,
   });
@@ -616,56 +597,6 @@ function stringToBytes(str) {
   return bytes;
 }
 
-/**
- * Gets length of the array (Array, Uint8Array, or string) in bytes.
- * @param {Array<any>|Uint8Array|string} arr
- * @returns {number}
- */
-// eslint-disable-next-line consistent-return
-function arrayByteLength(arr) {
-  if (arr.length !== undefined) {
-    return arr.length;
-  }
-  if (arr.byteLength !== undefined) {
-    return arr.byteLength;
-  }
-  unreachable("Invalid argument for arrayByteLength");
-}
-
-/**
- * Combines array items (arrays) into single Uint8Array object.
- * @param {Array<Array<any>|Uint8Array|string>} arr - the array of the arrays
- *   (Array, Uint8Array, or string).
- * @returns {Uint8Array}
- */
-function arraysToBytes(arr) {
-  const length = arr.length;
-  // Shortcut: if first and only item is Uint8Array, return it.
-  if (length === 1 && arr[0] instanceof Uint8Array) {
-    return arr[0];
-  }
-  let resultLength = 0;
-  for (let i = 0; i < length; i++) {
-    resultLength += arrayByteLength(arr[i]);
-  }
-  let pos = 0;
-  const data = new Uint8Array(resultLength);
-  for (let i = 0; i < length; i++) {
-    let item = arr[i];
-    if (!(item instanceof Uint8Array)) {
-      if (typeof item === "string") {
-        item = stringToBytes(item);
-      } else {
-        item = new Uint8Array(item);
-      }
-    }
-    const itemLength = item.byteLength;
-    data.set(item, pos);
-    pos += itemLength;
-  }
-  return data;
-}
-
 function string32(value) {
   if (
     typeof PDFJSDev === "undefined" ||
@@ -731,6 +662,19 @@ class FeatureTest {
       "isOffscreenCanvasSupported",
       typeof OffscreenCanvas !== "undefined"
     );
+  }
+
+  static get platform() {
+    if (
+      (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) &&
+      typeof navigator === "undefined"
+    ) {
+      return shadow(this, "platform", { isWin: false, isMac: false });
+    }
+    return shadow(this, "platform", {
+      isWin: navigator.platform.includes("Win"),
+      isMac: navigator.platform.includes("Mac"),
+    });
   }
 }
 
@@ -844,20 +788,6 @@ class Util {
       m[0] / d,
       (m[2] * m[5] - m[4] * m[3]) / d,
       (m[4] * m[1] - m[5] * m[0]) / d,
-    ];
-  }
-
-  // Apply a generic 3d matrix M on a 3-vector v:
-  //   | a b c |   | X |
-  //   | d e f | x | Y |
-  //   | g h i |   | Z |
-  // M is assumed to be serialized as [a,b,c,d,e,f,g,h,i],
-  // with v as [X,Y,Z]
-  static apply3dTransform(m, v) {
-    return [
-      m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
-      m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
-      m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
     ];
   }
 
@@ -1045,36 +975,6 @@ function stringToPDFString(str) {
   return strBuf.join("");
 }
 
-function escapeString(str) {
-  // replace "(", ")", "\n", "\r" and "\"
-  // by "\(", "\)", "\\n", "\\r" and "\\"
-  // in order to write it in a PDF file.
-  return str.replace(/([()\\\n\r])/g, match => {
-    if (match === "\n") {
-      return "\\n";
-    } else if (match === "\r") {
-      return "\\r";
-    }
-    return `\\${match}`;
-  });
-}
-
-function isAscii(str) {
-  return /^[\x00-\x7F]*$/.test(str);
-}
-
-function stringToUTF16BEString(str) {
-  const buf = ["\xFE\xFF"];
-  for (let i = 0, ii = str.length; i < ii; i++) {
-    const char = str.charCodeAt(i);
-    buf.push(
-      String.fromCharCode((char >> 8) & 0xff),
-      String.fromCharCode(char & 0xff)
-    );
-  }
-  return buf.join("");
-}
-
 function stringToUTF8String(str) {
   return decodeURIComponent(escape(str));
 }
@@ -1165,19 +1065,16 @@ export {
   AnnotationReviewState,
   AnnotationStateModelType,
   AnnotationType,
-  arrayByteLength,
-  arraysToBytes,
   assert,
   BaseException,
+  BASELINE_FACTOR,
   bytesToString,
   CMapCompressionType,
   createPromiseCapability,
   createValidAbsoluteUrl,
   DocumentActionEventType,
-  escapeString,
   FeatureTest,
   FONT_IDENTITY_MATRIX,
-  FontType,
   FormatError,
   getModificationDate,
   getVerbosityLevel,
@@ -1187,7 +1084,6 @@ export {
   InvalidPDFException,
   isArrayBuffer,
   isArrayEqual,
-  isAscii,
   LINE_DESCENT_FACTOR,
   LINE_FACTOR,
   MissingPDFException,
@@ -1201,11 +1097,9 @@ export {
   RenderingIntentFlag,
   setVerbosityLevel,
   shadow,
-  StreamType,
   string32,
   stringToBytes,
   stringToPDFString,
-  stringToUTF16BEString,
   stringToUTF8String,
   TextRenderingMode,
   UnexpectedResponseException,

@@ -52,6 +52,9 @@ class DecodingContext {
   }
 }
 
+const MAX_INT_32 = 2 ** 31 - 1;
+const MIN_INT_32 = -(2 ** 31);
+
 // Annex A. Arithmetic Integer Decoding Procedure
 // A.2 Procedure for decoding values
 function decodeInteger(contextCache, procedure, decoder) {
@@ -83,10 +86,15 @@ function decodeInteger(contextCache, procedure, decoder) {
                   readBits(4) + 4) :
                 readBits(2);
   /* eslint-enable no-nested-ternary */
+  let signedValue;
   if (sign === 0) {
-    return value;
+    signedValue = value;
   } else if (value > 0) {
-    return -value;
+    signedValue = -value;
+  }
+  // Ensure that the integer value doesn't underflow or overflow.
+  if (signedValue >= MIN_INT_32 && signedValue <= MAX_INT_32) {
+    return signedValue;
   }
   return null;
 }
@@ -1478,6 +1486,7 @@ function processSegment(segment, visitor) {
   }
   const callbackName = "on" + header.typeName;
   if (callbackName in visitor) {
+    // eslint-disable-next-line prefer-spread
     visitor[callbackName].apply(visitor, args);
   }
 }
@@ -1636,7 +1645,7 @@ class SimpleSegmentVisitor {
   }
 
   onImmediateLosslessGenericRegion() {
-    this.onImmediateGenericRegion.apply(this, arguments);
+    this.onImmediateGenericRegion(...arguments);
   }
 
   onSymbolDictionary(
@@ -1743,7 +1752,7 @@ class SimpleSegmentVisitor {
   }
 
   onImmediateLosslessTextRegion() {
-    this.onImmediateTextRegion.apply(this, arguments);
+    this.onImmediateTextRegion(...arguments);
   }
 
   onPatternDictionary(dictionary, currentSegment, data, start, end) {
@@ -1788,7 +1797,7 @@ class SimpleSegmentVisitor {
   }
 
   onImmediateLosslessHalftoneRegion() {
-    this.onImmediateHalftoneRegion.apply(this, arguments);
+    this.onImmediateHalftoneRegion(...arguments);
   }
 
   onTables(currentSegment, data, start, end) {
