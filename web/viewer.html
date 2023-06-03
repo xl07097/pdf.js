@@ -31,17 +31,27 @@ See https://github.com/adobe-type-tools/cmap-resources
 
 <!--#if MOZCENTRAL-->
 <!--#include viewer-snippet-firefox-extension.html-->
-<!--#endif-->
-<!--#if CHROME-->
+<!--#elif CHROME-->
 <!--#include viewer-snippet-chrome-extension.html-->
+<!--#elif MINIFIED-->
+<!--#include viewer-snippet-minified.html-->
+<!--#else-->
+<!--#include viewer-snippet.html-->
 <!--#endif-->
 
+<!--#if MOZCENTRAL-->
+<!--<link rel="stylesheet" href="resource://pdf.js/web/viewer.css">-->
+<!--#else-->
     <link rel="stylesheet" href="viewer.css">
-<!--#if !PRODUCTION-->
-    <link rel="resource" type="application/l10n" href="locale/locale.properties">
 <!--#endif-->
 
-<!--#if !PRODUCTION-->
+<!--#if MOZCENTRAL-->
+<!--<script src="resource://pdf.js/web/viewer.js"></script>-->
+<!--#elif !MINIFIED-->
+<!--<script src="viewer.js"></script>-->
+<!--#elif /* Development mode. */-->
+    <link rel="resource" type="application/l10n" href="locale/locale.properties">
+
     <script defer src="../node_modules/es-module-shims/dist/es-module-shims.js"></script>
     <script type="importmap-shim">
       {
@@ -49,7 +59,6 @@ See https://github.com/adobe-type-tools/cmap-resources
           "pdfjs/": "../src/",
           "pdfjs-lib": "../src/pdf.js",
           "pdfjs-web/": "./",
-          "pdfjs-fitCurve": "../build/dev-fitCurve/fit_curve.js",
 
           "web-annotation_editor_params": "./annotation_editor_params.js",
           "web-com": "./genericcom.js",
@@ -61,7 +70,6 @@ See https://github.com/adobe-type-tools/cmap-resources
           "web-pdf_outline_viewer": "./pdf_outline_viewer.js",
           "web-pdf_presentation_mode": "./pdf_presentation_mode.js",
           "web-pdf_sidebar": "./pdf_sidebar.js",
-          "web-pdf_sidebar_resizer": "./pdf_sidebar_resizer.js",
           "web-pdf_thumbnail_viewer": "./pdf_thumbnail_viewer.js",
           "web-print_service": "./pdf_print_service.js",
           "web-secondary_toolbar": "./secondary_toolbar.js",
@@ -72,17 +80,6 @@ See https://github.com/adobe-type-tools/cmap-resources
 
     <script src="viewer.js" type="module-shim"></script>
 <!--#endif-->
-
-<!--#if (GENERIC && !MINIFIED) -->
-<!--#include viewer-snippet.html-->
-<!--#endif-->
-
-<!--#if !MINIFIED -->
-<!--<script src="viewer.js"></script>-->
-<!--#else-->
-<!--#include viewer-snippet-minified.html-->
-<!--#endif-->
-
   </head>
 
   <body tabindex="1">
@@ -333,10 +330,10 @@ See https://github.com/adobe-type-tools/cmap-resources
                 <div class="verticalToolbarSeparator hiddenMediumView"></div>
 
                 <div id="editorModeButtons" class="splitToolbarButton toggled" role="radiogroup">
-                  <button id="editorFreeText" class="toolbarButton" disabled="disabled" title="Text" role="radio" aria-checked="false" tabindex="34" data-l10n-id="editor_free_text2">
+                  <button id="editorFreeText" class="toolbarButton" disabled="disabled" title="Text" role="radio" aria-checked="false" aria-controls="editorFreeTextParamsToolbar" tabindex="34" data-l10n-id="editor_free_text2">
                     <span data-l10n-id="editor_free_text2_label">Text</span>
                   </button>
-                  <button id="editorInk" class="toolbarButton" disabled="disabled" title="Draw" role="radio" aria-checked="false" tabindex="35" data-l10n-id="editor_ink2">
+                  <button id="editorInk" class="toolbarButton" disabled="disabled" title="Draw" role="radio" aria-checked="false" aria-controls="editorInkParamsToolbar" tabindex="35" data-l10n-id="editor_ink2">
                     <span data-l10n-id="editor_ink2_label">Draw</span>
                   </button>
                 </div>

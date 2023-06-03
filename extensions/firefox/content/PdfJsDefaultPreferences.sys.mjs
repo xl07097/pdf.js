@@ -1,4 +1,4 @@
-/* Copyright 2022 Mozilla Foundation
+/* Copyright 2018 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,8 +13,6 @@
  * limitations under the License.
  */
 
-const fitCurve = require(PDFJSDev.test("LIB")
-  ? "fit-curve"
-  : "fit-curve/src/fit-curve.js");
-
-export { fitCurve };
+export const PdfJsDefaultPreferences = Object.freeze(
+  PDFJSDev.eval("DEFAULT_PREFERENCES")
+);

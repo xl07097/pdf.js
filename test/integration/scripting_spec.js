@@ -829,11 +829,15 @@ describe("Interaction", () => {
             expect(total).withContext(`In ${browserName}`).toEqual(`£${sum}`);
           }
 
+          await page.waitForSelector('.page[data-page-number = "4"]', {
+            timeout: 0,
+          });
+
           // Some unrendered annotations have been updated, so check
           // that they've the correct value when rendered.
           await page.evaluate(() => {
             window.document
-              .querySelectorAll('[data-page-number="4"][class="page"]')[0]
+              .querySelector('.page[data-page-number = "4"]')
               .scrollIntoView();
           });
           await page.waitForSelector(getSelector("299R"), {
@@ -1738,11 +1742,11 @@ describe("Interaction", () => {
             "window.PDFViewerApplication.scriptingReady === true"
           );
 
-          await page.type(getSelector("30R"), "abc");
+          await page.type(getSelector("30R"), "abc", { delay: 100 });
           await page.waitForFunction(
             `${getQuerySelector("30R")}.value !== "abc"`
           );
-          await page.waitForTimeout(10);
+          await page.waitForTimeout(100);
 
           const focusedId = await page.evaluate(_ =>
             window.document.activeElement.getAttribute("data-element-id")
@@ -1889,6 +1893,72 @@ describe("Interaction", () => {
 
           text = await page.$eval(getSelector("44R"), el => el.value);
           expect(text).withContext(`In ${browserName}`).toEqual("No");
+        })
+      );
+    });
+  });
+
+  describe("in bug1825002.pdf", () => {
+    let pages;
+
+    beforeAll(async () => {
+      pages = await loadAndWait("bug1825002.pdf", getSelector("23R"));
+    });
+
+    afterAll(async () => {
+      await closePages(pages);
+    });
+
+    it("must check that a field has the correct formatted value", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          await page.waitForFunction(
+            "window.PDFViewerApplication.scriptingReady === true"
+          );
+
+          let text = await page.$eval(getSelector("23R"), el => el.value);
+          expect(text)
+            .withContext(`In ${browserName}`)
+            .toEqual("ABCDEFGHIJKLMN");
+
+          await page.click(getSelector("23R"));
+          await page.waitForFunction(
+            `${getQuerySelector("23R")}.value !== "ABCDEFGHIJKLMN"`
+          );
+
+          text = await page.$eval(getSelector("23R"), el => el.value);
+          expect(text).withContext(`In ${browserName}`).toEqual("123,45.7A");
+        })
+      );
+    });
+
+    it("must check that a field is empty", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          await page.waitForFunction(
+            "window.PDFViewerApplication.scriptingReady === true"
+          );
+
+          let text = await page.$eval(getSelector("26R"), el => el.value);
+          expect(text).withContext(`In ${browserName}`).toEqual("");
+
+          await page.click(getSelector("26R"));
+          await page.type(getSelector("26R"), "abcde", { delay: 10 });
+
+          await page.click(getSelector("23R"));
+          await page.waitForTimeout(10);
+          await page.click(getSelector("26R"));
+
+          await page.keyboard.down("Control");
+          await page.keyboard.press("A");
+          await page.keyboard.up("Control");
+          await page.keyboard.press("Backspace");
+
+          await page.click(getSelector("23R"));
+          await page.waitForTimeout(10);
+
+          text = await page.$eval(getSelector("26R"), el => el.value);
+          expect(text).withContext(`In ${browserName}`).toEqual("");
         })
       );
     });

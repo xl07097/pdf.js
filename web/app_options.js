@@ -88,6 +88,11 @@ const defaultOptions = {
     value: false,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
+  enableFloatingToolbar: {
+    /** @type {boolean} */
+    value: typeof PDFJSDev === "undefined",
+    kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
+  },
   enablePermissions: {
     /** @type {boolean} */
     value: false,
@@ -125,7 +130,10 @@ const defaultOptions = {
   },
   imageResourcesPath: {
     /** @type {string} */
-    value: "./images/",
+    value:
+      typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")
+        ? "resource://pdf.js/web/images/"
+        : "./images/",
     kind: OptionKind.VIEWER,
   },
   maxCanvasPixels: {
@@ -150,7 +158,7 @@ const defaultOptions = {
   },
   pdfBugEnabled: {
     /** @type {boolean} */
-    value: typeof PDFJSDev === "undefined" || !PDFJSDev.test("PRODUCTION"),
+    value: typeof PDFJSDev === "undefined",
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
   printResolution: {
@@ -202,8 +210,11 @@ const defaultOptions = {
   cMapUrl: {
     /** @type {string} */
     value:
-      typeof PDFJSDev === "undefined" || !PDFJSDev.test("PRODUCTION")
+      // eslint-disable-next-line no-nested-ternary
+      typeof PDFJSDev === "undefined"
         ? "../external/bcmaps/"
+        : PDFJSDev.test("MOZCENTRAL")
+        ? "resource://pdf.js/web/cmaps/"
         : "../web/cmaps/",
     kind: OptionKind.API,
   },
@@ -265,8 +276,11 @@ const defaultOptions = {
   standardFontDataUrl: {
     /** @type {string} */
     value:
-      typeof PDFJSDev === "undefined" || !PDFJSDev.test("PRODUCTION")
+      // eslint-disable-next-line no-nested-ternary
+      typeof PDFJSDev === "undefined"
         ? "../external/standard_fonts/"
+        : PDFJSDev.test("MOZCENTRAL")
+        ? "resource://pdf.js/web/standard_fonts/"
         : "../web/standard_fonts/",
     kind: OptionKind.API,
   },
@@ -284,16 +298,16 @@ const defaultOptions = {
   workerSrc: {
     /** @type {string} */
     value:
-      typeof PDFJSDev === "undefined" || !PDFJSDev.test("PRODUCTION")
-        ? "../src/worker_loader.js"
+      // eslint-disable-next-line no-nested-ternary
+      typeof PDFJSDev === "undefined"
+        ? "../src/pdf.worker.js"
+        : PDFJSDev.test("MOZCENTRAL")
+        ? "resource://pdf.js/build/pdf.worker.js"
         : "../build/pdf.worker.js",
     kind: OptionKind.WORKER,
   },
 };
-if (
-  typeof PDFJSDev === "undefined" ||
-  PDFJSDev.test("!PRODUCTION || GENERIC")
-) {
+if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
   defaultOptions.defaultUrl = {
     /** @type {string} */
     value: "compressed.tracemonkey-pldi-09.pdf",
@@ -309,15 +323,10 @@ if (
     value: navigator.language || "en-US",
     kind: OptionKind.VIEWER,
   };
-  defaultOptions.renderer = {
-    /** @type {string} */
-    value: "canvas",
-    kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
-  };
   defaultOptions.sandboxBundleSrc = {
     /** @type {string} */
     value:
-      typeof PDFJSDev === "undefined" || !PDFJSDev.test("PRODUCTION")
+      typeof PDFJSDev === "undefined"
         ? "../build/dev-sandbox/pdf.sandbox.js"
         : "../build/pdf.sandbox.js",
     kind: OptionKind.VIEWER,

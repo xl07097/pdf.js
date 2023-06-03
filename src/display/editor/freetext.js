@@ -21,6 +21,7 @@ import {
   AnnotationEditorType,
   assert,
   LINE_FACTOR,
+  shadow,
   Util,
 } from "../../shared/util.js";
 import { bindEvents, KeyboardManager } from "./tools.js";
@@ -58,12 +59,18 @@ class FreeTextEditor extends AnnotationEditor {
 
   static _defaultFontSize = 10;
 
-  static _keyboardManager = new KeyboardManager([
-    [
-      ["ctrl+Enter", "mac+meta+Enter", "Escape", "mac+Escape"],
-      FreeTextEditor.prototype.commitOrRemove,
-    ],
-  ]);
+  static get _keyboardManager() {
+    return shadow(
+      this,
+      "_keyboardManager",
+      new KeyboardManager([
+        [
+          ["ctrl+Enter", "mac+meta+Enter", "Escape", "mac+Escape"],
+          FreeTextEditor.prototype.commitOrRemove,
+        ],
+      ])
+    );
+  }
 
   static _type = "freetext";
 
@@ -85,10 +92,7 @@ class FreeTextEditor extends AnnotationEditor {
 
     const style = getComputedStyle(document.documentElement);
 
-    if (
-      typeof PDFJSDev === "undefined" ||
-      PDFJSDev.test("!PRODUCTION || TESTING")
-    ) {
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
       const lineHeight = parseFloat(
         style.getPropertyValue("--freetext-line-height")
       );
