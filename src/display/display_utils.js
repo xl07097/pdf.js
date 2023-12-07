@@ -22,6 +22,7 @@ import {
 } from "./base_factory.js";
 import {
   BaseException,
+  FeatureTest,
   shadow,
   stringToBytes,
   Util,
@@ -29,8 +30,6 @@ import {
 } from "../shared/util.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-
-const AnnotationPrefix = "pdfjs_internal_id_";
 
 class PixelsPerInch {
   static CSS = 96.0;
@@ -64,6 +63,12 @@ class DOMFilterFactory extends BaseFilterFactory {
 
   #hcmUrl;
 
+  #hcmHighlightFilter;
+
+  #hcmHighlightKey;
+
+  #hcmHighlightUrl;
+
   #id = 0;
 
   constructor({ docId, ownerDocument = globalThis.document } = {}) {
@@ -96,13 +101,6 @@ class DOMFilterFactory extends BaseFilterFactory {
       this.#document.body.append(div);
     }
     return this.#_defs;
-  }
-
-  #appendFeFunc(feComponentTransfer, func, table) {
-    const feFunc = this.#document.createElementNS(SVG_NS, func);
-    feFunc.setAttribute("type", "discrete");
-    feFunc.setAttribute("tableValues", table);
-    feComponentTransfer.append(feFunc);
   }
 
   addFilter(maps) {
@@ -155,20 +153,8 @@ class DOMFilterFactory extends BaseFilterFactory {
     this.#cache.set(maps, url);
     this.#cache.set(key, url);
 
-    const filter = this.#document.createElementNS(SVG_NS, "filter", SVG_NS);
-    filter.setAttribute("id", id);
-    filter.setAttribute("color-interpolation-filters", "sRGB");
-    const feComponentTransfer = this.#document.createElementNS(
-      SVG_NS,
-      "feComponentTransfer"
-    );
-    filter.append(feComponentTransfer);
-
-    this.#appendFeFunc(feComponentTransfer, "feFuncR", tableR);
-    this.#appendFeFunc(feComponentTransfer, "feFuncG", tableG);
-    this.#appendFeFunc(feComponentTransfer, "feFuncB", tableB);
-
-    this.#defs.append(filter);
+    const filter = this.#createFilter(id);
+    this.#addTransferMapConversion(tableR, tableG, tableB, filter);
 
     return url;
   }
@@ -187,13 +173,9 @@ class DOMFilterFactory extends BaseFilterFactory {
       return this.#hcmUrl;
     }
 
-    this.#defs.style.color = fgColor;
-    fgColor = getComputedStyle(this.#defs).getPropertyValue("color");
-    const fgRGB = getRGB(fgColor);
+    const fgRGB = this.#getRGB(fgColor);
     fgColor = Util.makeHexColor(...fgRGB);
-    this.#defs.style.color = bgColor;
-    bgColor = getComputedStyle(this.#defs).getPropertyValue("color");
-    const bgRGB = getRGB(bgColor);
+    const bgRGB = this.#getRGB(bgColor);
     bgColor = Util.makeHexColor(...bgRGB);
     this.#defs.style.color = "";
 
@@ -221,39 +203,9 @@ class DOMFilterFactory extends BaseFilterFactory {
     const table = map.join(",");
 
     const id = `g_${this.#docId}_hcm_filter`;
-    const filter = (this.#hcmFilter = this.#document.createElementNS(
-      SVG_NS,
-      "filter",
-      SVG_NS
-    ));
-    filter.setAttribute("id", id);
-    filter.setAttribute("color-interpolation-filters", "sRGB");
-    let feComponentTransfer = this.#document.createElementNS(
-      SVG_NS,
-      "feComponentTransfer"
-    );
-    filter.append(feComponentTransfer);
-
-    this.#appendFeFunc(feComponentTransfer, "feFuncR", table);
-    this.#appendFeFunc(feComponentTransfer, "feFuncG", table);
-    this.#appendFeFunc(feComponentTransfer, "feFuncB", table);
-
-    const feColorMatrix = this.#document.createElementNS(
-      SVG_NS,
-      "feColorMatrix"
-    );
-    feColorMatrix.setAttribute("type", "matrix");
-    feColorMatrix.setAttribute(
-      "values",
-      "0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0"
-    );
-    filter.append(feColorMatrix);
-
-    feComponentTransfer = this.#document.createElementNS(
-      SVG_NS,
-      "feComponentTransfer"
-    );
-    filter.append(feComponentTransfer);
+    const filter = (this.#hcmHighlightFilter = this.#createFilter(id));
+    this.#addTransferMapConversion(table, table, table, filter);
+    this.#addGrayConversion(filter);
 
     const getSteps = (c, n) => {
       const start = fgRGB[c] / 255;
@@ -264,18 +216,101 @@ class DOMFilterFactory extends BaseFilterFactory {
       }
       return arr.join(",");
     };
-    this.#appendFeFunc(feComponentTransfer, "feFuncR", getSteps(0, 5));
-    this.#appendFeFunc(feComponentTransfer, "feFuncG", getSteps(1, 5));
-    this.#appendFeFunc(feComponentTransfer, "feFuncB", getSteps(2, 5));
-
-    this.#defs.append(filter);
+    this.#addTransferMapConversion(
+      getSteps(0, 5),
+      getSteps(1, 5),
+      getSteps(2, 5),
+      filter
+    );
 
     this.#hcmUrl = `url(#${id})`;
     return this.#hcmUrl;
   }
 
+  addHighlightHCMFilter(fgColor, bgColor, newFgColor, newBgColor) {
+    const key = `${fgColor}-${bgColor}-${newFgColor}-${newBgColor}`;
+    if (this.#hcmHighlightKey === key) {
+      return this.#hcmHighlightUrl;
+    }
+
+    this.#hcmHighlightKey = key;
+    this.#hcmHighlightUrl = "none";
+    this.#hcmHighlightFilter?.remove();
+
+    if (!fgColor || !bgColor) {
+      return this.#hcmHighlightUrl;
+    }
+
+    const [fgRGB, bgRGB] = [fgColor, bgColor].map(this.#getRGB.bind(this));
+    let fgGray = Math.round(
+      0.2126 * fgRGB[0] + 0.7152 * fgRGB[1] + 0.0722 * fgRGB[2]
+    );
+    let bgGray = Math.round(
+      0.2126 * bgRGB[0] + 0.7152 * bgRGB[1] + 0.0722 * bgRGB[2]
+    );
+    let [newFgRGB, newBgRGB] = [newFgColor, newBgColor].map(
+      this.#getRGB.bind(this)
+    );
+    if (bgGray < fgGray) {
+      [fgGray, bgGray, newFgRGB, newBgRGB] = [
+        bgGray,
+        fgGray,
+        newBgRGB,
+        newFgRGB,
+      ];
+    }
+    this.#defs.style.color = "";
+
+    // Now we can create the filters to highlight some canvas parts.
+    // The colors in the pdf will almost be Canvas and CanvasText, hence we
+    // want to filter them to finally get Highlight and HighlightText.
+    // Since we're in HCM the background color and the foreground color should
+    // be really different when converted to grayscale (if they're not then it
+    // means that we've a poor contrast). Once the canvas colors are converted
+    // to grayscale we can easily map them on their new colors.
+    // The grayscale step is important because if we've something like:
+    //   fgColor = #FF....
+    //   bgColor = #FF....
+    //   then we are enable to map the red component on the new red components
+    //   which can be different.
+
+    const getSteps = (fg, bg, n) => {
+      const arr = new Array(256);
+      const step = (bgGray - fgGray) / n;
+      const newStart = fg / 255;
+      const newStep = (bg - fg) / (255 * n);
+      let prev = 0;
+      for (let i = 0; i <= n; i++) {
+        const k = Math.round(fgGray + i * step);
+        const value = newStart + i * newStep;
+        for (let j = prev; j <= k; j++) {
+          arr[j] = value;
+        }
+        prev = k + 1;
+      }
+      for (let i = prev; i < 256; i++) {
+        arr[i] = arr[prev - 1];
+      }
+      return arr.join(",");
+    };
+
+    const id = `g_${this.#docId}_hcm_highlight_filter`;
+    const filter = (this.#hcmHighlightFilter = this.#createFilter(id));
+
+    this.#addGrayConversion(filter);
+    this.#addTransferMapConversion(
+      getSteps(newFgRGB[0], newBgRGB[0], 5),
+      getSteps(newFgRGB[1], newBgRGB[1], 5),
+      getSteps(newFgRGB[2], newBgRGB[2], 5),
+      filter
+    );
+
+    this.#hcmHighlightUrl = `url(#${id})`;
+    return this.#hcmHighlightUrl;
+  }
+
   destroy(keepHCM = false) {
-    if (keepHCM && this.#hcmUrl) {
+    if (keepHCM && (this.#hcmUrl || this.#hcmHighlightUrl)) {
       return;
     }
     if (this.#_defs) {
@@ -287,6 +322,51 @@ class DOMFilterFactory extends BaseFilterFactory {
       this.#_cache = null;
     }
     this.#id = 0;
+  }
+
+  #addGrayConversion(filter) {
+    const feColorMatrix = this.#document.createElementNS(
+      SVG_NS,
+      "feColorMatrix"
+    );
+    feColorMatrix.setAttribute("type", "matrix");
+    feColorMatrix.setAttribute(
+      "values",
+      "0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0"
+    );
+    filter.append(feColorMatrix);
+  }
+
+  #createFilter(id) {
+    const filter = this.#document.createElementNS(SVG_NS, "filter");
+    filter.setAttribute("color-interpolation-filters", "sRGB");
+    filter.setAttribute("id", id);
+    this.#defs.append(filter);
+
+    return filter;
+  }
+
+  #appendFeFunc(feComponentTransfer, func, table) {
+    const feFunc = this.#document.createElementNS(SVG_NS, func);
+    feFunc.setAttribute("type", "discrete");
+    feFunc.setAttribute("tableValues", table);
+    feComponentTransfer.append(feFunc);
+  }
+
+  #addTransferMapConversion(rTable, gTable, bTable, filter) {
+    const feComponentTransfer = this.#document.createElementNS(
+      SVG_NS,
+      "feComponentTransfer"
+    );
+    filter.append(feComponentTransfer);
+    this.#appendFeFunc(feComponentTransfer, "feFuncR", rTable);
+    this.#appendFeFunc(feComponentTransfer, "feFuncG", gTable);
+    this.#appendFeFunc(feComponentTransfer, "feFuncB", bTable);
+  }
+
+  #getRGB(color) {
+    this.#defs.style.color = color;
+    return getRGB(getComputedStyle(this.#defs).getPropertyValue("color"));
   }
 }
 
@@ -307,7 +387,7 @@ class DOMCanvasFactory extends BaseCanvasFactory {
   }
 }
 
-async function fetchData(url, asTypedArray = false) {
+async function fetchData(url, type = "text") {
   if (
     (typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")) ||
     isValidFetchUrl(url, document.baseURI)
@@ -316,29 +396,38 @@ async function fetchData(url, asTypedArray = false) {
     if (!response.ok) {
       throw new Error(response.statusText);
     }
-    return asTypedArray
-      ? new Uint8Array(await response.arrayBuffer())
-      : stringToBytes(await response.text());
+    switch (type) {
+      case "arraybuffer":
+        return response.arrayBuffer();
+      case "blob":
+        return response.blob();
+      case "json":
+        return response.json();
+    }
+    return response.text();
   }
 
   // The Fetch API is not supported.
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open("GET", url, /* asTypedArray = */ true);
+    request.open("GET", url, /* async = */ true);
+    request.responseType = type;
 
-    if (asTypedArray) {
-      request.responseType = "arraybuffer";
-    }
     request.onreadystatechange = () => {
       if (request.readyState !== XMLHttpRequest.DONE) {
         return;
       }
       if (request.status === 200 || request.status === 0) {
         let data;
-        if (asTypedArray && request.response) {
-          data = new Uint8Array(request.response);
-        } else if (!asTypedArray && request.responseText) {
-          data = stringToBytes(request.responseText);
+        switch (type) {
+          case "arraybuffer":
+          case "blob":
+          case "json":
+            data = request.response;
+            break;
+          default:
+            data = request.responseText;
+            break;
         }
         if (data) {
           resolve(data);
@@ -357,8 +446,17 @@ class DOMCMapReaderFactory extends BaseCMapReaderFactory {
    * @ignore
    */
   _fetchData(url, compressionType) {
-    return fetchData(url, /* asTypedArray = */ this.isCompressed).then(data => {
-      return { cMapData: data, compressionType };
+    return fetchData(
+      url,
+      /* type = */ this.isCompressed ? "arraybuffer" : "text"
+    ).then(data => {
+      return {
+        cMapData:
+          data instanceof ArrayBuffer
+            ? new Uint8Array(data)
+            : stringToBytes(data),
+        compressionType,
+      };
     });
   }
 }
@@ -368,7 +466,9 @@ class DOMStandardFontDataFactory extends BaseStandardFontDataFactory {
    * @ignore
    */
   _fetchData(url) {
-    return fetchData(url, /* asTypedArray = */ true);
+    return fetchData(url, /* type = */ "arraybuffer").then(data => {
+      return new Uint8Array(data);
+    });
   }
 }
 
@@ -583,9 +683,8 @@ class PageViewport {
 }
 
 class RenderingCancelledException extends BaseException {
-  constructor(msg, type, extraDelay = 0) {
+  constructor(msg, extraDelay = 0) {
     super(msg, "RenderingCancelledException");
-    this.type = type;
     this.extraDelay = extraDelay;
   }
 }
@@ -648,7 +747,7 @@ function getPdfFilenameFromUrl(url, defaultFilename = "document.pdf") {
         suggestedFilename = reFilename.exec(
           decodeURIComponent(suggestedFilename)
         )[0];
-      } catch (ex) {
+      } catch {
         // Possible (extremely rare) errors:
         // URIError "Malformed URI", e.g. for "%AA.pdf"
         // TypeError "null has no properties", e.g. for "%2F.pdf"
@@ -698,36 +797,23 @@ class StatTimer {
 }
 
 function isValidFetchUrl(url, baseUrl) {
+  if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")) {
+    throw new Error("Not implemented: isValidFetchUrl");
+  }
   try {
     const { protocol } = baseUrl ? new URL(url, baseUrl) : new URL(url);
     // The Fetch API only supports the http/https protocols, and not file/ftp.
     return protocol === "http:" || protocol === "https:";
-  } catch (ex) {
+  } catch {
     return false; // `new URL()` will throw on incorrect data.
   }
 }
 
 /**
- * @param {string} src
- * @param {boolean} [removeScriptElement]
- * @returns {Promise<void>}
+ * Event handler to suppress context menu.
  */
-function loadScript(src, removeScriptElement = false) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = src;
-
-    script.onload = function (evt) {
-      if (removeScriptElement) {
-        script.remove();
-      }
-      resolve(evt);
-    };
-    script.onerror = function () {
-      reject(new Error(`Cannot load script at: ${script.src}`));
-    };
-    (document.head || document.documentElement).append(script);
-  });
+function noContextMenu(e) {
+  e.preventDefault();
 }
 
 // Deprecated API function -- display regardless of the `verbosity` setting.
@@ -899,15 +985,12 @@ function setLayerDimensions(
   if (viewport instanceof PageViewport) {
     const { pageWidth, pageHeight } = viewport.rawDims;
     const { style } = div;
+    const useRound = FeatureTest.isCSSRoundSupported;
 
-    // TODO: Investigate if it could be interesting to use the css round
-    // function (https://developer.mozilla.org/en-US/docs/Web/CSS/round):
-    // const widthStr =
-    //   `round(down, var(--scale-factor) * ${pageWidth}px, 1px)`;
-    // const heightStr =
-    //   `round(down, var(--scale-factor) * ${pageHeight}px, 1px)`;
-    const widthStr = `calc(var(--scale-factor) * ${pageWidth}px)`;
-    const heightStr = `calc(var(--scale-factor) * ${pageHeight}px)`;
+    const w = `var(--scale-factor) * ${pageWidth}px`,
+      h = `var(--scale-factor) * ${pageHeight}px`;
+    const widthStr = useRound ? `round(${w}, 1px)` : `calc(${w})`,
+      heightStr = useRound ? `round(${h}, 1px)` : `calc(${h})`;
 
     if (!mustFlip || viewport.rotation % 180 === 0) {
       style.width = widthStr;
@@ -924,13 +1007,13 @@ function setLayerDimensions(
 }
 
 export {
-  AnnotationPrefix,
   deprecated,
   DOMCanvasFactory,
   DOMCMapReaderFactory,
   DOMFilterFactory,
   DOMStandardFontDataFactory,
   DOMSVGFactory,
+  fetchData,
   getColorValues,
   getCurrentTransform,
   getCurrentTransformInverse,
@@ -941,7 +1024,7 @@ export {
   isDataScheme,
   isPdfFile,
   isValidFetchUrl,
-  loadScript,
+  noContextMenu,
   PageViewport,
   PDFDateString,
   PixelsPerInch,

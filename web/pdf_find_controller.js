@@ -448,18 +448,6 @@ class PDFFindController {
     if (!state) {
       return;
     }
-    if (
-      (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) &&
-      state.phraseSearch === false
-    ) {
-      console.error(
-        "The `phraseSearch`-parameter was removed, please provide " +
-          "an Array of strings in the `query`-parameter instead."
-      );
-      if (typeof state.query === "string") {
-        state.query = state.query.match(/\S+/g);
-      }
-    }
     const pdfDocument = this._pdfDocument;
     const { type } = state;
 
@@ -623,11 +611,10 @@ class PDFFindController {
       if (newQuery !== prevQuery) {
         return true;
       }
-    } else {
-      // Array
-      if (JSON.stringify(newQuery) !== JSON.stringify(prevQuery)) {
-        return true;
-      }
+    } else if (
+      /* isArray && */ JSON.stringify(newQuery) !== JSON.stringify(prevQuery)
+    ) {
+      return true;
     }
 
     switch (state.type) {

@@ -644,7 +644,7 @@ class XFAObject {
     for (const $symbol of Object.getOwnPropertySymbols(this)) {
       try {
         clone[$symbol] = this[$symbol];
-      } catch (_) {
+      } catch {
         shadow(clone, $symbol, this[$symbol]);
       }
     }
@@ -657,11 +657,10 @@ class XFAObject {
         continue;
       }
       const value = this[name];
-      if (value instanceof XFAObjectArray) {
-        clone[name] = new XFAObjectArray(value[_max]);
-      } else {
-        clone[name] = null;
-      }
+      clone[name] =
+        value instanceof XFAObjectArray
+          ? new XFAObjectArray(value[_max])
+          : null;
     }
 
     for (const child of this[_children]) {

@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { bytesToString, info, stringToBytes, warn } from "../shared/util.js";
-import { Dict, Name, Ref } from "./primitives.js";
+import { bytesToString, info, warn } from "../shared/util.js";
+import { Dict, isName, Name, Ref } from "./primitives.js";
 import {
   escapePDFName,
   escapeString,
@@ -25,12 +25,15 @@ import { SimpleDOMNode, SimpleXMLParser } from "./xml_parser.js";
 import { BaseStream } from "./base_stream.js";
 import { calculateMD5 } from "./crypto.js";
 
-async function writeObject(ref, obj, buffer, transform) {
+async function writeObject(ref, obj, buffer, { encrypt = null }) {
+  const transform = encrypt?.createCipherTransform(ref.num, ref.gen);
   buffer.push(`${ref.num} ${ref.gen} obj\n`);
   if (obj instanceof Dict) {
     await writeDict(obj, buffer, transform);
   } else if (obj instanceof BaseStream) {
     await writeStream(obj, buffer, transform);
+  } else if (Array.isArray(obj)) {
+    await writeArray(obj, buffer, transform);
   }
   buffer.push("\nendobj\n");
 }
@@ -45,63 +48,68 @@ async function writeDict(dict, buffer, transform) {
 }
 
 async function writeStream(stream, buffer, transform) {
-  let string = stream.getString();
-  if (transform !== null) {
-    string = transform.encryptString(string);
-  }
+  let bytes = stream.getBytes();
+  const { dict } = stream;
 
-  // eslint-disable-next-line no-undef
-  if (typeof CompressionStream === "undefined") {
-    stream.dict.set("Length", string.length);
-    await writeDict(stream.dict, buffer, transform);
-    buffer.push(" stream\n", string, "\nendstream");
-    return;
-  }
+  const [filter, params] = await Promise.all([
+    dict.getAsync("Filter"),
+    dict.getAsync("DecodeParms"),
+  ]);
 
-  const filter = await stream.dict.getAsync("Filter");
-  const flateDecode = Name.get("FlateDecode");
+  const filterZero = Array.isArray(filter)
+    ? await dict.xref.fetchIfRefAsync(filter[0])
+    : filter;
+  const isFilterZeroFlateDecode = isName(filterZero, "FlateDecode");
 
-  // If the string is too small there is no real benefit
-  // in compressing it.
+  // If the string is too small there is no real benefit in compressing it.
   // The number 256 is arbitrary, but it should be reasonable.
   const MIN_LENGTH_FOR_COMPRESSING = 256;
 
   if (
-    string.length >= MIN_LENGTH_FOR_COMPRESSING ||
-    (Array.isArray(filter) && filter.includes(flateDecode)) ||
-    (filter instanceof Name && filter.name === flateDecode.name)
+    typeof CompressionStream !== "undefined" &&
+    (bytes.length >= MIN_LENGTH_FOR_COMPRESSING || isFilterZeroFlateDecode)
   ) {
     try {
-      const byteArray = stringToBytes(string);
-      // eslint-disable-next-line no-undef
       const cs = new CompressionStream("deflate");
       const writer = cs.writable.getWriter();
-      writer.write(byteArray);
+      writer.write(bytes);
       writer.close();
 
       // Response::text doesn't return the correct data.
       const buf = await new Response(cs.readable).arrayBuffer();
-      string = bytesToString(new Uint8Array(buf));
+      bytes = new Uint8Array(buf);
 
-      if (Array.isArray(filter)) {
-        if (!filter.includes(flateDecode)) {
-          filter.push(flateDecode);
+      let newFilter, newParams;
+      if (!filter) {
+        newFilter = Name.get("FlateDecode");
+      } else if (!isFilterZeroFlateDecode) {
+        newFilter = Array.isArray(filter)
+          ? [Name.get("FlateDecode"), ...filter]
+          : [Name.get("FlateDecode"), filter];
+        if (params) {
+          newParams = Array.isArray(params)
+            ? [null, ...params]
+            : [null, params];
         }
-      } else if (!filter) {
-        stream.dict.set("Filter", flateDecode);
-      } else if (
-        !(filter instanceof Name) ||
-        filter.name !== flateDecode.name
-      ) {
-        stream.dict.set("Filter", [filter, flateDecode]);
+      }
+      if (newFilter) {
+        dict.set("Filter", newFilter);
+      }
+      if (newParams) {
+        dict.set("DecodeParms", newParams);
       }
     } catch (ex) {
       info(`writeStream - cannot compress data: "${ex}".`);
     }
   }
 
-  stream.dict.set("Length", string.length);
-  await writeDict(stream.dict, buffer, transform);
+  let string = bytesToString(bytes);
+  if (transform) {
+    string = transform.encryptString(string);
+  }
+
+  dict.set("Length", string.length);
+  await writeDict(dict, buffer, transform);
   buffer.push(" stream\n", string, "\nendstream");
 }
 
@@ -127,7 +135,7 @@ async function writeValue(value, buffer, transform) {
   } else if (Array.isArray(value)) {
     await writeArray(value, buffer, transform);
   } else if (typeof value === "string") {
-    if (transform !== null) {
+    if (transform) {
       value = transform.encryptString(value);
     }
     buffer.push(`(${escapeString(value)})`);
@@ -197,11 +205,9 @@ function writeXFADataForAcroform(str, newRefs) {
       node = xml.documentElement.searchNode([nodePath.at(-1)], 0);
     }
     if (node) {
-      if (Array.isArray(value)) {
-        node.childNodes = value.map(val => new SimpleDOMNode("value", val));
-      } else {
-        node.childNodes = [new SimpleDOMNode("#text", value)];
-      }
+      node.childNodes = Array.isArray(value)
+        ? value.map(val => new SimpleDOMNode("value", val))
+        : [new SimpleDOMNode("#text", value)];
     } else {
       warn(`Node not found for path: ${path}`);
     }
@@ -225,15 +231,11 @@ async function updateAcroform({
     warn("XFA - Cannot save it");
   }
 
-  if (!needAppearances && (!hasXfa || !xfaDatasetsRef)) {
+  if (!needAppearances && (!hasXfa || !xfaDatasetsRef || hasXfaDatasetsEntry)) {
     return;
   }
 
-  // Clone the acroForm.
-  const dict = new Dict(xref);
-  for (const key of acroForm.getKeys()) {
-    dict.set(key, acroForm.getRaw(key));
-  }
+  const dict = acroForm.clone();
 
   if (hasXfa && !hasXfaDatasetsEntry) {
     // We've a XFA array which doesn't contain a datasets entry.
@@ -250,14 +252,8 @@ async function updateAcroform({
     dict.set("NeedAppearances", true);
   }
 
-  const encrypt = xref.encrypt;
-  let transform = null;
-  if (encrypt) {
-    transform = encrypt.createCipherTransform(acroFormRef.num, acroFormRef.gen);
-  }
-
   const buffer = [];
-  await writeObject(acroFormRef, dict, buffer, transform);
+  await writeObject(acroFormRef, dict, buffer, xref);
 
   newRefs.push({ ref: acroFormRef, data: buffer.join("") });
 }

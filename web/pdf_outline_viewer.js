@@ -133,7 +133,6 @@ class PDFOutlineViewer extends BaseTreeViewer {
       element.href = linkService.getAnchorUrl("");
       element.onclick = () => {
         this.downloadManager.openOrDownloadData(
-          element,
           attachment.content,
           attachment.filename
         );
@@ -341,7 +340,7 @@ class PDFOutlineViewer extends BaseTreeViewer {
                   return null; // The document was closed while the data resolved.
                 }
                 this.linkService.cachePageRef(pageNumber, destRef);
-              } catch (ex) {
+              } catch {
                 // Invalid page reference, ignore it and continue parsing.
               }
             }

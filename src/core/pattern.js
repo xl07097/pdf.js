@@ -116,11 +116,10 @@ class RadialAxialShading extends BaseShading {
       localColorSpaceCache,
     });
     const bbox = dict.getArray("BBox");
-    if (Array.isArray(bbox) && bbox.length === 4) {
-      this.bbox = Util.normalizeRect(bbox);
-    } else {
-      this.bbox = null;
-    }
+    this.bbox =
+      Array.isArray(bbox) && bbox.length === 4
+        ? Util.normalizeRect(bbox)
+        : null;
 
     let t0 = 0.0,
       t1 = 1.0;
@@ -412,29 +411,26 @@ class MeshStreamReader {
   }
 }
 
-const getB = (function getBClosure() {
-  function buildB(count) {
-    const lut = [];
-    for (let i = 0; i <= count; i++) {
-      const t = i / count,
-        t_ = 1 - t;
-      lut.push(
-        new Float32Array([
-          t_ * t_ * t_,
-          3 * t * t_ * t_,
-          3 * t * t * t_,
-          t * t * t,
-        ])
-      );
-    }
-    return lut;
-  }
-  const cache = Object.create(null);
+let bCache = Object.create(null);
 
-  return function (count) {
-    return (cache[count] ||= buildB(count));
-  };
-})();
+function buildB(count) {
+  const lut = [];
+  for (let i = 0; i <= count; i++) {
+    const t = i / count,
+      t_ = 1 - t;
+    lut.push(
+      new Float32Array([t_ ** 3, 3 * t * t_ ** 2, 3 * t ** 2 * t_, t ** 3])
+    );
+  }
+  return lut;
+}
+function getB(count) {
+  return (bCache[count] ||= buildB(count));
+}
+
+function clearPatternCaches() {
+  bCache = Object.create(null);
+}
 
 class MeshShading extends BaseShading {
   static MIN_SPLIT_PATCH_CHUNKS_AMOUNT = 3;
@@ -458,11 +454,10 @@ class MeshShading extends BaseShading {
     const dict = stream.dict;
     this.shadingType = dict.get("ShadingType");
     const bbox = dict.getArray("BBox");
-    if (Array.isArray(bbox) && bbox.length === 4) {
-      this.bbox = Util.normalizeRect(bbox);
-    } else {
-      this.bbox = null;
-    }
+    this.bbox =
+      Array.isArray(bbox) && bbox.length === 4
+        ? Util.normalizeRect(bbox)
+        : null;
     const cs = ColorSpace.parse({
       cs: dict.getRaw("CS") || dict.getRaw("ColorSpace"),
       xref,
@@ -1007,4 +1002,4 @@ function getTilingPatternIR(operatorList, dict, color) {
   ];
 }
 
-export { getTilingPatternIR, Pattern };
+export { clearPatternCaches, getTilingPatternIR, Pattern };

@@ -42,6 +42,9 @@ if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("CHROME")) {
   }
 
   AppOptions.set("defaultUrl", defaultUrl);
+  // Ensure that PDFViewerApplication.initialBookmark reflects the current hash,
+  // in case the URL rewrite above results in a different hash.
+  PDFViewerApplication.initialBookmark = location.hash.slice(1);
 })();
 
 const ChromeCom = {
@@ -150,7 +153,7 @@ function isRuntimeAvailable() {
     if (chrome.runtime?.getManifest()) {
       return true;
     }
-  } catch (e) {}
+  } catch {}
   return false;
 }
 
@@ -349,7 +352,7 @@ class ChromePreferences extends BasePreferences {
           defaultPrefs = this.defaults;
         }
         storageArea.get(defaultPrefs, function (readPrefs) {
-          resolve(readPrefs);
+          resolve({ prefs: readPrefs });
         });
       };
 
@@ -432,7 +435,7 @@ class ChromeExternalServices extends DefaultExternalServices {
     return new ChromePreferences();
   }
 
-  static createL10n(options) {
+  static async createL10n() {
     return new GenericL10n(navigator.language);
   }
 

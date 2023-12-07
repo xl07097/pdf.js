@@ -16,14 +16,14 @@
 /** @typedef {import("../src/display/api").PDFPageProxy} PDFPageProxy */
 // eslint-disable-next-line max-len
 /** @typedef {import("../src/display/display_utils").PageViewport} PageViewport */
+// eslint-disable-next-line max-len
+/** @typedef {import("../src/display/annotation_storage").AnnotationStorage} AnnotationStorage */
 /** @typedef {import("./interfaces").IDownloadManager} IDownloadManager */
-/** @typedef {import("./interfaces").IL10n} IL10n */
 /** @typedef {import("./interfaces").IPDFLinkService} IPDFLinkService */
 // eslint-disable-next-line max-len
-/** @typedef {import("./textaccessibility.js").TextAccessibilityManager} TextAccessibilityManager */
+/** @typedef {import("./text_accessibility.js").TextAccessibilityManager} TextAccessibilityManager */
 
 import { AnnotationLayer } from "pdfjs-lib";
-import { NullL10n } from "./l10n_utils.js";
 import { PresentationModeState } from "./ui_utils.js";
 
 /**
@@ -35,8 +35,7 @@ import { PresentationModeState } from "./ui_utils.js";
  *   for annotation icons. Include trailing slash.
  * @property {boolean} renderForms
  * @property {IPDFLinkService} linkService
- * @property {IDownloadManager} downloadManager
- * @property {IL10n} l10n - Localization service.
+ * @property {IDownloadManager} [downloadManager]
  * @property {boolean} [enableScripting]
  * @property {Promise<boolean>} [hasJSActionsPromise]
  * @property {Promise<Object<string, Array<Object>> | null>}
@@ -59,7 +58,6 @@ class AnnotationLayerBuilder {
     annotationStorage = null,
     imageResourcesPath = "",
     renderForms = true,
-    l10n = NullL10n,
     enableScripting = false,
     hasJSActionsPromise = null,
     fieldObjectsPromise = null,
@@ -72,7 +70,6 @@ class AnnotationLayerBuilder {
     this.downloadManager = downloadManager;
     this.imageResourcesPath = imageResourcesPath;
     this.renderForms = renderForms;
-    this.l10n = l10n;
     this.annotationStorage = annotationStorage;
     this.enableScripting = enableScripting;
     this._hasJSActionsPromise = hasJSActionsPromise || Promise.resolve(false);
@@ -129,12 +126,12 @@ class AnnotationLayerBuilder {
       div,
       accessibilityManager: this._accessibilityManager,
       annotationCanvasMap: this._annotationCanvasMap,
+      page: this.pdfPage,
+      viewport: viewport.clone({ dontFlip: true }),
     });
 
-    this.annotationLayer.render({
-      viewport: viewport.clone({ dontFlip: true }),
+    await this.annotationLayer.render({
       annotations,
-      page: this.pdfPage,
       imageResourcesPath: this.imageResourcesPath,
       renderForms: this.renderForms,
       linkService: this.linkService,
@@ -144,7 +141,6 @@ class AnnotationLayerBuilder {
       hasJSActions,
       fieldObjects,
     });
-    this.l10n.translate(div);
 
     // Ensure that interactive form elements in the annotationLayer are
     // disabled while PresentationMode is active (see issue 12232).

@@ -15,6 +15,7 @@
 @import url(text_layer_builder.css);
 @import url(annotation_layer_builder.css);
 @import url(xfa_layer_builder.css);
+/* Ignored in GECKOVIEW builds: */
 @import url(annotation_editor_layer_builder.css);
 
 :root {
@@ -78,13 +79,17 @@
   overflow: visible;
   border: var(--page-border);
   background-clip: content-box;
-  background-color: rgba(255, 255, 255, 1);
+  background-color: rgb(255 255 255);
 }
 
 .pdfViewer .dummyPage {
   position: relative;
   width: 0;
   height: var(--viewer-container-height);
+}
+
+.pdfViewer.noUserSelect {
+  user-select: none;
 }
 
 /*#if GENERIC*/
